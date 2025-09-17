@@ -7,10 +7,10 @@ use metacat::lang::{Obj, Term};
 use metacat::svg::save_svg;
 use metacat::util::build_typed;
 
-// metamath's df-ex: ⊢ (∃𝑥𝜑 ↔ ¬ ∀𝑥 ¬ 𝜑)
+// metamath alnex:  ⊢ (∀𝑥 ¬ 𝜑 ↔ ¬ ∃𝑥𝜑)
 
 // df-ex source map: ⊢ ¬(∀x.φ)
-fn df_ex_target() -> Term<FOL> {
+fn alnex_source() -> Term<FOL> {
     use FOL::*;
     build_typed([Obj, Obj], |builder, [a, x]| {
         let y = Phi.call(builder, vec![a, x.clone()]);
@@ -23,7 +23,7 @@ fn df_ex_target() -> Term<FOL> {
 }
 
 // ⊢ (∃x.¬φ)
-fn df_ex_source() -> Term<FOL> {
+fn alnex_target() -> Term<FOL> {
     use FOL::*;
     build_typed([Obj, Obj], |builder, [a, x]| {
         let y = Phi.call(builder, vec![a, x.clone()]);
@@ -36,12 +36,12 @@ fn df_ex_source() -> Term<FOL> {
 }
 
 fn main() {
-    let df_ex_tgt = forget_monogamous(&df_ex_target());
-    save_svg(&df_ex_tgt, "df_ex_target.svg").expect("Failed to save df_ex_target SVG");
+    let alnex_src = dual(forget_monogamous(&alnex_source()));
+    save_svg(&alnex_src, "alnex_source.svg").expect("Failed to save alnex_source SVG");
 
-    let df_ex_src = dual(forget_monogamous(&df_ex_source()));
-    save_svg(&df_ex_src, "df_ex_source.svg").expect("Failed to save df_ex_source SVG");
+    let alnex_tgt = forget_monogamous(&alnex_target());
+    save_svg(&alnex_tgt, "alnex_target.svg").expect("Failed to save alnex_target SVG");
 
-    let both = df_ex_src.compose(&df_ex_tgt).unwrap();
+    let both = alnex_src.compose(&alnex_tgt).unwrap();
     save_svg(&both, "composed.svg").expect("Failed to save composed SVG");
 }
