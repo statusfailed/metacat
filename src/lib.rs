@@ -1,6 +1,9 @@
 pub mod fol;
-pub mod interpret;
 pub mod lang;
+
+pub mod interpreter;
+pub mod ssa;
+pub mod tree;
 
 pub mod svg;
 pub mod util;

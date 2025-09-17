@@ -10,6 +10,7 @@ pub enum FOL {
     Implies,
     And,
     Or,
+    True,
     Phi, // TODO: remove me!
 }
 
@@ -23,6 +24,7 @@ impl std::fmt::Display for FOL {
             FOL::Implies => write!(f, "→"),
             FOL::And => write!(f, "∧"),
             FOL::Or => write!(f, "∨"),
+            FOL::True => write!(f, "⊤"),
             FOL::Phi => write!(f, "φ"),
         }
     }
@@ -38,6 +40,7 @@ impl FOL {
             FOL::Implies => (2, 1),
             FOL::And => (2, 1),
             FOL::Or => (2, 1),
+            FOL::True => (0, 1),
             FOL::Phi => (2, 1),
         }
     }
