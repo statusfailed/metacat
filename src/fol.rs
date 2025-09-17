@@ -1,4 +1,4 @@
-use crate::lang::{Arr, Biprofile, Builder, Var};
+use crate::lang::{Arr, Biprofile, Builder, Obj, Var};
 use open_hypergraphs::lax::var;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +43,6 @@ impl FOL {
     }
 
     pub fn call(&self, builder: &Builder<FOL>, args: Vec<Var<FOL>>) -> Var<FOL> {
-        var::fn_operation(builder, &args, (), Arr::Fwd(self.clone()))
+        var::fn_operation(builder, &args, Obj, Arr::Fwd(self.clone()))
     }
 }
