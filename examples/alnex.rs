@@ -112,45 +112,30 @@ fn main() {
 
     // Run the interpreter on df_ex with no inputs
     let mut interpreter = Interpreter;
-    let df_ex_tree = interpreter.run(df_ex(), vec![]);
+    let df_ex_tree = interpreter.run(df_ex(), vec![]).unwrap();
     print_interpreter_result("df_ex", &df_ex_tree);
 
     // now use df_ex_tree as input to con2bii...
     let term = con2bii();
     let _ = save_svg(&term, "examples/images/con2bii.svg");
-    let con2bii_result = interpreter.run(term, df_ex_tree.unwrap());
+    let con2bii_result = interpreter.run(term, df_ex_tree).unwrap();
     print_interpreter_result("con2bii", &con2bii_result);
 
     // Run alnex and compare to con2bii result
     let term = alnex();
     let _ = save_svg(&term, "examples/images/alnex.svg");
-    let alnex_result = interpreter.run(term, vec![]);
+    let mut alnex_result = interpreter.run(term, vec![]).unwrap();
     print_interpreter_result("alnex", &alnex_result);
 
-    // Compare results
-    match (&con2bii_result, &alnex_result) {
-        (Ok(con2bii_values), Ok(alnex_values)) => {
-            if con2bii_values == alnex_values {
-                println!("✓ alnex and con2bii results are equal!");
-            } else {
-                println!("✗ alnex and con2bii results differ");
-            }
-        }
-        _ => {
-            println!("Cannot compare: one or both computations failed");
-        }
+    if con2bii_result == alnex_result {
+        println!("✓ alnex and con2bii results are equal!");
+    } else {
+        println!("✗ alnex and con2bii results differ");
     }
 }
 
-fn print_interpreter_result(name: &str, result: &Result<Vec<Value>, InterpreterError>) {
-    match result {
-        Ok(values) => {
-            for (i, value) in values.iter().enumerate() {
-                println!("{}.{i}: {}", name, pretty_print_fol(value));
-            }
-        }
-        Err(e) => {
-            println!("Interpreter error in {}: {}", name, e);
-        }
+fn print_interpreter_result(name: &str, values: &Vec<Value>) {
+    for (i, value) in values.iter().enumerate() {
+        println!("{}.{i}: {}", name, pretty_print_fol(value));
     }
 }
