@@ -5,7 +5,6 @@ use metacat::fol::{FOL, pretty_print_fol};
 use metacat::forget::forget_monogamous;
 use metacat::interpreter::{Interpreter, InterpreterError, Value};
 use metacat::lang::{Obj, Term};
-use metacat::svg::save_svg;
 use metacat::util::build_typed;
 
 // alnex : ⊢ (∀𝑥 ¬ 𝜑 ↔ ¬ ∃𝑥𝜑)
@@ -107,6 +106,10 @@ fn con2bii() -> Term<FOL> {
     d.compose(&t).unwrap()
 }
 
+fn save_svg(term: &Term<FOL>, path: &str) {
+    let _ = metacat::svg::save_svg(&term, path);
+}
+
 fn main() {
     let _ = save_svg(&df_ex(), "examples/images/df_ex.svg");
 
@@ -119,12 +122,12 @@ fn main() {
     let term = con2bii();
     let _ = save_svg(&term, "examples/images/con2bii.svg");
     let con2bii_result = interpreter.run(term, df_ex_tree).unwrap();
-    print_interpreter_result("con2bii", &con2bii_result);
+    print_interpreter_result("con2bii(df_ex)", &con2bii_result);
 
     // Run alnex and compare to con2bii result
     let term = alnex();
     let _ = save_svg(&term, "examples/images/alnex.svg");
-    let mut alnex_result = interpreter.run(term, vec![]).unwrap();
+    let alnex_result = interpreter.run(term, vec![]).unwrap();
     print_interpreter_result("alnex", &alnex_result);
 
     if con2bii_result == alnex_result {
