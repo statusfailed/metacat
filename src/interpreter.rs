@@ -15,10 +15,12 @@ impl Interpreter {
     /// Run the interpreter with specified input values
     pub fn run(
         &mut self,
-        term: Term<FOL>,
+        mut term: Term<FOL>,
         values: Vec<Value>,
     ) -> Result<Vec<Value>, InterpreterError> {
         assert_eq!(values.len(), term.sources.len());
+
+        term.quotient();
 
         // create initial state by moving argument values into state
         let mut state = HashMap::<NodeId, Value>::new();
@@ -88,6 +90,8 @@ impl Interpreter {
                 got: args.len(),
             });
         }
+
+        // NOTE: this works when no outputs- empty vec (discards!)
         let value = args.pop().unwrap();
         Ok(vec![value; ssa.targets.len()])
     }
@@ -97,11 +101,15 @@ impl Interpreter {
         ssa: &SSA<Obj, Arr<FOL>>,
         mut args: Vec<Value>,
     ) -> Result<Vec<Value>, InterpreterError> {
+        // Equal with no inputs should return a Leaf for each output
         if args.is_empty() {
-            return Err(InterpreterError::ArityError {
-                expected: 1,
-                got: 0,
-            });
+            let mut results = Vec::new();
+            for (node_id, obj) in &ssa.targets {
+                // Create a leaf with id from targets and label from ssa
+                let leaf = Tree::Leaf(node_id.0, obj.clone());
+                results.push(leaf);
+            }
+            return Ok(results);
         }
 
         let first = &args[0];
