@@ -1,8 +1,9 @@
 use open_hypergraphs::category::*;
 
 use metacat::dual::dual;
-use metacat::fol::FOL;
+use metacat::fol::{FOL, pretty_print_fol};
 use metacat::forget::forget_monogamous;
+use metacat::interpreter::{Interpreter, InterpreterError, Value};
 use metacat::lang::{Obj, Term};
 use metacat::svg::save_svg;
 use metacat::util::build_typed;
@@ -35,10 +36,37 @@ fn alnex_rhs() -> Term<FOL> {
     .unwrap()
 }
 
-// alnex() would put these together with a ↔ and turnstile. but don't worry about this.
-//fn alnex() -> Term<FOL> {
-//  todo!()
-//}
+// alnex : ⊢ (∀𝑥 ¬ 𝜑 ↔ ¬ ∃𝑥𝜑)
+fn alnex_target() -> Term<FOL> {
+    use FOL::*;
+    let result = build_typed([Obj, Obj], |builder, [a, x]| {
+        // Left side: ∀𝑥 ¬ 𝜑
+        let phi = Phi.call(builder, vec![a.clone(), x.clone()]);
+        let not_phi = Not.call(builder, vec![phi]);
+        let forall_not_phi = Forall.call(builder, vec![not_phi, x.clone()]);
+
+        // Right side: ¬ ∃𝑥𝜑
+        let phi2 = Phi.call(builder, vec![a, x.clone()]);
+        let exists_phi = Exists.call(builder, vec![phi2, x]);
+        let not_exists_phi = Not.call(builder, vec![exists_phi]);
+
+        // ∀𝑥 ¬ 𝜑 ↔ ¬ ∃𝑥𝜑
+        let equiv = Equiv.call(builder, vec![forall_not_phi, not_exists_phi]);
+        let provable = Provable.call(builder, vec![equiv]);
+        vec![provable]
+    })
+    .unwrap();
+    forget_monogamous(&result)
+}
+
+fn alnex_source() -> Term<FOL> {
+    // empty term - discards two metavars
+    forget_monogamous(&build_typed([Obj, Obj], |_, [_, _]| vec![]).unwrap())
+}
+
+fn alnex() -> Term<FOL> {
+    forget_monogamous(&dual(alnex_source()).compose(&alnex_target()).unwrap())
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // `df-ex : ⊢ (∃𝑥𝜑 ↔ ¬ ∀𝑥 ¬ 𝜑)` [https://us.metamath.org/mpeuni/def-ex.html]
@@ -49,13 +77,30 @@ fn df_ex_source() -> Term<FOL> {
     forget_monogamous(&build_typed([Obj, Obj], |_, [_, _]| vec![]).unwrap())
 }
 
-//TODO: construct ⊢ (∃𝑥𝜑 ↔ ¬ ∀𝑥 ¬ 𝜑)
+// construct ⊢ (∃𝑥𝜑 ↔ ¬ ∀𝑥 ¬ 𝜑)
 fn df_ex_target() -> Term<FOL> {
-    todo!()
+    use FOL::*;
+    build_typed([Obj, Obj], |builder, [a, x]| {
+        // Left side: ∃𝑥𝜑
+        let phi = Phi.call(builder, vec![a.clone(), x.clone()]);
+        let exists_phi = Exists.call(builder, vec![phi, x.clone()]);
+
+        // Right side: ¬ ∀𝑥 ¬ 𝜑
+        let phi2 = Phi.call(builder, vec![a, x.clone()]);
+        let not_phi = Not.call(builder, vec![phi2]);
+        let forall_not_phi = Forall.call(builder, vec![not_phi, x]);
+        let not_forall_not_phi = Not.call(builder, vec![forall_not_phi]);
+
+        // ∃𝑥𝜑 ↔ ¬ ∀𝑥 ¬ 𝜑
+        let equiv = Equiv.call(builder, vec![exists_phi, not_forall_not_phi]);
+        let provable = Provable.call(builder, vec![equiv]);
+        vec![provable]
+    })
+    .unwrap()
 }
 
 fn df_ex() -> Term<FOL> {
-    todo!()
+    forget_monogamous(&dual(df_ex_source()).compose(&df_ex_target()).unwrap())
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -65,7 +110,8 @@ fn con2bii_source() -> Term<FOL> {
     use FOL::*;
     let result = build_typed([Obj, Obj], |builder, [phi, psi]| {
         let not_psi = Not.call(builder, vec![psi]);
-        vec![Equiv.call(builder, vec![phi, not_psi])]
+        let equiv = Equiv.call(builder, vec![phi, not_psi]);
+        vec![Provable.call(builder, vec![equiv])]
     })
     .unwrap();
     forget_monogamous(&result)
@@ -75,16 +121,64 @@ fn con2bii_target() -> Term<FOL> {
     use FOL::*;
     let result = build_typed([Obj, Obj], |builder, [phi, psi]| {
         let not_phi = Not.call(builder, vec![phi]);
-        vec![Equiv.call(builder, vec![psi, not_phi])]
+        let equiv = Equiv.call(builder, vec![psi, not_phi]);
+        vec![Provable.call(builder, vec![equiv])]
     })
     .unwrap();
     forget_monogamous(&result)
 }
 
 fn con2bii() -> Term<FOL> {
-    dual(con2bii_source()).compose(&con2bii_target()).unwrap()
+    let s = con2bii_source();
+    let t = con2bii_target();
+    let d = dual(s);
+    d.compose(&t).unwrap()
 }
 
 fn main() {
-    todo!()
+    let _ = save_svg(&df_ex(), "examples/images/df_ex.svg");
+
+    // Run the interpreter on df_ex with no inputs
+    let mut interpreter = Interpreter;
+    let df_ex_tree = interpreter.run(df_ex(), vec![]);
+    print_interpreter_result("df_ex", &df_ex_tree);
+
+    // now use df_ex_tree as input to con2bii...
+    let term = con2bii();
+    let _ = save_svg(&term, "examples/images/con2bii.svg");
+    let con2bii_result = interpreter.run(term, df_ex_tree.unwrap());
+    print_interpreter_result("con2bii", &con2bii_result);
+
+    // Run alnex and compare to con2bii result
+    let term = alnex();
+    let _ = save_svg(&term, "examples/images/alnex.svg");
+    let alnex_result = interpreter.run(term, vec![]);
+    print_interpreter_result("alnex", &alnex_result);
+
+    // Compare results
+    match (&con2bii_result, &alnex_result) {
+        (Ok(con2bii_values), Ok(alnex_values)) => {
+            if con2bii_values == alnex_values {
+                println!("✓ alnex and con2bii results are equal!");
+            } else {
+                println!("✗ alnex and con2bii results differ");
+            }
+        }
+        _ => {
+            println!("Cannot compare: one or both computations failed");
+        }
+    }
+}
+
+fn print_interpreter_result(name: &str, result: &Result<Vec<Value>, InterpreterError>) {
+    match result {
+        Ok(values) => {
+            for (i, value) in values.iter().enumerate() {
+                println!("{}.{i}: {}", name, pretty_print_fol(value));
+            }
+        }
+        Err(e) => {
+            println!("Interpreter error in {}: {}", name, e);
+        }
+    }
 }

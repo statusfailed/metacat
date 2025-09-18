@@ -10,7 +10,7 @@ pub enum Tree<Leaf, Node> {
 impl<Node: std::fmt::Display, Leaf: std::fmt::Display> std::fmt::Display for Tree<Leaf, Node> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Tree::Leaf(i, label) => write!(f, "({i} : {label})"),
+            Tree::Leaf(i, _label) => write!(f, "x{i}"),
             Tree::Node(lbl, children) => {
                 write!(f, "{}(", lbl)?;
                 for (i, child) in children.iter().enumerate() {

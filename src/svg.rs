@@ -36,9 +36,7 @@ pub fn save_svg<
 ) -> Result<(), std::io::Error> {
     use crate::svg::to_svg;
     let bytes = to_svg(term)?;
-    let output_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("examples")
-        .join("images");
+    let output_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     std::fs::create_dir_all(&output_dir)?;
     let output_path = output_dir.join(filename);
     println!("saving svg to {output_path:?}");
