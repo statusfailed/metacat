@@ -37,7 +37,7 @@ pub fn save_svg<
     use crate::svg::to_svg;
     let bytes = to_svg(term)?;
     let output_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    std::fs::create_dir_all(&output_dir)?;
+    std::fs::create_dir_all(output_dir)?;
     let output_path = output_dir.join(filename);
     std::fs::write(output_path, bytes).expect("write diagram file");
     Ok(())

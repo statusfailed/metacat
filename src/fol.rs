@@ -109,10 +109,7 @@ pub fn pretty_print_fol(term: &Tree<Obj, FOL>) -> String {
 
                 // Fallback to prefix notation
                 _ => {
-                    let args: Vec<String> = children
-                        .iter()
-                        .map(|child| pretty_print_fol(child))
-                        .collect();
+                    let args: Vec<String> = children.iter().map(pretty_print_fol).collect();
                     format!("{}({})", op, args.join(", "))
                 }
             }

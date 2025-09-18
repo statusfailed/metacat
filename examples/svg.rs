@@ -1,8 +1,8 @@
 use open_hypergraphs::category::*;
+use open_hypergraphs::lax::var::forget::forget_monogamous;
 
 use metacat::dual::dual;
 use metacat::fol::FOL;
-use metacat::forget::forget_monogamous;
 use metacat::lang::{Obj, Term};
 use metacat::svg::save_svg;
 use metacat::util::build_typed;

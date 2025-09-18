@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 graphviz-rust = "0.9.5"
-open-hypergraphs = "0.2.5"
+open-hypergraphs = "0.2.6"
 open-hypergraphs-dot = "0.2.1"

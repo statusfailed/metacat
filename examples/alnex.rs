@@ -1,9 +1,9 @@
 use open_hypergraphs::category::*;
+use open_hypergraphs::lax::var::forget::forget_monogamous;
 
 use metacat::dual::dual;
 use metacat::fol::{FOL, pretty_print_fol};
-use metacat::forget::forget_monogamous;
-use metacat::interpreter::{Interpreter, InterpreterError, Value};
+use metacat::interpreter::{Interpreter, Value};
 use metacat::lang::{Obj, Term};
 use metacat::util::build_typed;
 
