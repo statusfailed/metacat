@@ -8,34 +8,6 @@ use metacat::lang::{Obj, Term};
 use metacat::svg::save_svg;
 use metacat::util::build_typed;
 
-// metamath alnex:  ⊢ (∀𝑥 ¬ 𝜑 ↔ ¬ ∃𝑥𝜑)
-
-// df-ex source map: ⊢ ¬(∀x.φ)
-fn alnex_lhs() -> Term<FOL> {
-    use FOL::*;
-    build_typed([Obj, Obj], |builder, [a, x]| {
-        let y = Phi.call(builder, vec![a, x.clone()]);
-        let y = Forall.call(builder, vec![y, x]);
-        let y = Not.call(builder, vec![y]);
-        let y = Provable.call(builder, vec![y]);
-        vec![y]
-    })
-    .unwrap()
-}
-
-// ⊢ (∃x.¬φ)
-fn alnex_rhs() -> Term<FOL> {
-    use FOL::*;
-    build_typed([Obj, Obj], |builder, [a, x]| {
-        let y = Phi.call(builder, vec![a, x.clone()]);
-        let y = Not.call(builder, vec![y]);
-        let y = Exists.call(builder, vec![y, x]);
-        let y = Provable.call(builder, vec![y]);
-        vec![y]
-    })
-    .unwrap()
-}
-
 // alnex : ⊢ (∀𝑥 ¬ 𝜑 ↔ ¬ ∃𝑥𝜑)
 fn alnex_target() -> Term<FOL> {
     use FOL::*;
