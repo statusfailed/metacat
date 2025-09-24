@@ -21,7 +21,7 @@ pub struct Signature<T> {
     pub symbols: HashMap<T, Biprofile>,
 }
 */
-
+// TODO: this should be defined in FOL, not lang!
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Obj;
 
