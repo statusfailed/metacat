@@ -14,7 +14,7 @@ fn alnex_source() -> Term<FOL> {
     use FOL::*;
     build_typed([Obj, Obj], |builder, [a, x]| {
         let y = Phi.call(builder, vec![a, x.clone()]);
-        let y = Forall.call(builder, vec![y, x]);
+        let y = Forall.call(builder, vec![x, y]);
         let y = Not.call(builder, vec![y]);
         let y = Provable.call(builder, vec![y]);
         vec![y]

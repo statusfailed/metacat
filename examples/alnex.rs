@@ -14,7 +14,7 @@ fn alnex_target() -> Term<FOL> {
         // Left side: ∀𝑥 ¬ 𝜑
         let phi = Phi.call(builder, vec![a.clone(), x.clone()]);
         let not_phi = Not.call(builder, vec![phi]);
-        let forall_not_phi = Forall.call(builder, vec![not_phi, x.clone()]);
+        let forall_not_phi = Forall.call(builder, vec![x.clone(), not_phi]);
 
         // Right side: ¬ ∃𝑥𝜑
         let phi2 = Phi.call(builder, vec![a, x.clone()]);
@@ -59,7 +59,7 @@ fn df_ex_target() -> Term<FOL> {
         // Right side: ¬ ∀𝑥 ¬ 𝜑
         let phi2 = Phi.call(builder, vec![a, x.clone()]);
         let not_phi = Not.call(builder, vec![phi2]);
-        let forall_not_phi = Forall.call(builder, vec![not_phi, x]);
+        let forall_not_phi = Forall.call(builder, vec![x, not_phi]);
         let not_forall_not_phi = Not.call(builder, vec![forall_not_phi]);
 
         // ∃𝑥𝜑 ↔ ¬ ∀𝑥 ¬ 𝜑

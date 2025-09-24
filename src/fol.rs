@@ -88,8 +88,8 @@ pub fn pretty_print_fol(term: &Tree<Obj, FOL>) -> String {
                 // Quantifiers (special case with variable)
                 (FOL::Forall, 2) => format!(
                     "∀{}.{}",
-                    pretty_print_fol(&children[1]),
-                    pretty_print_fol(&children[0])
+                    pretty_print_fol(&children[0]),
+                    pretty_print_fol(&children[1])
                 ),
                 (FOL::Exists, 2) => format!(
                     "∃{}.{}",
