@@ -1,41 +1,41 @@
 //! Simple interpreter for Bayesian Boolean Circuits
-use crate::fol::FOL;
-use crate::lang::{Arr, Obj, Term};
+use crate::core::{Arr, Obj, Term};
 use crate::ssa::{SSA, parallel_ssa};
 use crate::tree::Tree;
 
 use open_hypergraphs::lax::NodeId;
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 
-pub type Value = Tree<Obj, FOL>;
+pub type Value<T> = Tree<Obj, T>;
 
-pub struct Interpreter;
+pub struct Interpreter<T> {
+    _phantom: std::marker::PhantomData<T>,
+}
 
-impl Interpreter {
+impl<T> Interpreter<T> {
+    pub fn new() -> Self {
+        Self {
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<T: Clone + PartialEq> Interpreter<T> {
+    /// Run the interpreter with specified input values
     pub fn run(
         &mut self,
-        term: Term<FOL>,
-        values: Vec<Value>,
-    ) -> Result<Vec<Value>, InterpreterError> {
-        Ok(self.run_state(term, values)?.1)
-    }
-
-    /// Run the interpreter with specified input values
-    pub fn run_state(
-        &mut self,
-        mut term: Term<FOL>,
-        values: Vec<Value>,
-    ) -> Result<(Vec<Value>, Vec<Value>), InterpreterError> {
+        mut term: Term<T>,
+        values: Vec<Value<T>>,
+    ) -> Result<Vec<Value<T>>, InterpreterError<T>> {
         assert_eq!(values.len(), term.sources.len());
 
         term.quotient();
 
         // create initial state by moving argument values into state
-        //let mut state = HashMap::<NodeId, Value>::new();
-        let mut state: Vec<Option<Value>> = vec![None; term.hypergraph.nodes.len()];
-
+        let mut state = HashMap::<NodeId, Value<T>>::new();
         for (node_id, value) in term.sources.iter().zip(values) {
-            state[node_id.0] = Some(value);
+            state.insert(*node_id, value);
         }
 
         // Save target nodes before moving term
@@ -47,8 +47,8 @@ impl Interpreter {
                 // get args: Vec<Value> by popping each id in op.sources from state
                 let mut args = Vec::new();
                 for (node_id, _) in &op.sources {
-                    match &state[node_id.0] {
-                        Some(value) => args.push(value.clone()),
+                    match state.remove(node_id) {
+                        Some(value) => args.push(value),
                         None => return Err(InterpreterError::NonMonogamousRead(*node_id)),
                     }
                 }
@@ -57,10 +57,8 @@ impl Interpreter {
 
                 // write each result into state at op.targets ids
                 for ((node_id, _), result) in op.targets.iter().zip(results) {
-                    if state[node_id.0].is_some() {
+                    if state.insert(*node_id, result).is_some() {
                         return Err(InterpreterError::NonMonogamousWrite(*node_id));
-                    } else {
-                        state[node_id.0] = Some(result);
                     }
                 }
             }
@@ -69,23 +67,20 @@ impl Interpreter {
         // Extract target values and return them
         let mut target_values = Vec::new();
         for target_node in &target_nodes {
-            match &state[target_node.0] {
-                Some(value) => target_values.push(value.clone()),
+            match state.remove(target_node) {
+                Some(value) => target_values.push(value),
                 None => return Err(InterpreterError::NonMonogamousRead(*target_node)),
             }
         }
 
-        match state.into_iter().collect() {
-            Some(state) => Ok((state, target_values)),
-            None => Err(InterpreterError::NotAllValuesComputed),
-        }
+        Ok(target_values)
     }
 
     pub fn apply(
         &mut self,
-        ssa: &SSA<Obj, Arr<FOL>>,
-        args: Vec<Value>,
-    ) -> Result<Vec<Value>, InterpreterError> {
+        ssa: &SSA<Obj, Arr<T>>,
+        args: Vec<Value<T>>,
+    ) -> Result<Vec<Value<T>>, InterpreterError<T>> {
         match &ssa.op {
             Arr::Copy => self.apply_copy(ssa, args),
             Arr::Equal => self.apply_equal(ssa, args),
@@ -96,9 +91,9 @@ impl Interpreter {
 
     fn apply_copy(
         &mut self,
-        ssa: &SSA<Obj, Arr<FOL>>,
-        mut args: Vec<Value>,
-    ) -> Result<Vec<Value>, InterpreterError> {
+        ssa: &SSA<Obj, Arr<T>>,
+        mut args: Vec<Value<T>>,
+    ) -> Result<Vec<Value<T>>, InterpreterError<T>> {
         if args.len() != 1 {
             return Err(InterpreterError::ArityError {
                 expected: 1,
@@ -113,9 +108,9 @@ impl Interpreter {
 
     fn apply_equal(
         &mut self,
-        ssa: &SSA<Obj, Arr<FOL>>,
-        mut args: Vec<Value>,
-    ) -> Result<Vec<Value>, InterpreterError> {
+        ssa: &SSA<Obj, Arr<T>>,
+        mut args: Vec<Value<T>>,
+    ) -> Result<Vec<Value<T>>, InterpreterError<T>> {
         // Equal with no inputs should return a Leaf for each output
         if args.is_empty() {
             let mut results = Vec::new();
@@ -141,10 +136,10 @@ impl Interpreter {
     /// Wrap all the args under the provided label
     fn apply_fwd(
         &mut self,
-        _ssa: &SSA<Obj, Arr<FOL>>,
-        label: FOL,
-        args: Vec<Value>,
-    ) -> Result<Vec<Value>, InterpreterError> {
+        _ssa: &SSA<Obj, Arr<T>>,
+        label: T,
+        args: Vec<Value<T>>,
+    ) -> Result<Vec<Value<T>>, InterpreterError<T>> {
         let tree = Tree::Node(label, args);
         Ok(vec![tree])
     }
@@ -152,10 +147,10 @@ impl Interpreter {
     /// *Unpack* all the children of a tree, provided the label matches expected
     fn apply_rev(
         &mut self,
-        _ssa: &SSA<Obj, Arr<FOL>>,
-        label: FOL,
-        args: Vec<Value>,
-    ) -> Result<Vec<Value>, InterpreterError> {
+        _ssa: &SSA<Obj, Arr<T>>,
+        label: T,
+        args: Vec<Value<T>>,
+    ) -> Result<Vec<Value<T>>, InterpreterError<T>> {
         if args.len() != 1 {
             return Err(InterpreterError::ArityError {
                 expected: 1,
@@ -180,7 +175,7 @@ impl Interpreter {
 
 /// TODO: split to ApplyError/InterpreterError. Latter yields SSA location information.
 #[derive(Debug, Clone)]
-pub enum InterpreterError {
+pub enum InterpreterError<T> {
     /// A value (identified by a node id) was written to multiple times
     NonMonogamousWrite(NodeId),
 
@@ -188,27 +183,19 @@ pub enum InterpreterError {
     NonMonogamousRead(NodeId),
 
     /// Wrong number of arguments
-    ArityError {
-        expected: usize,
-        got: usize,
-    },
+    ArityError { expected: usize, got: usize },
 
     /// Type error
-    TypeError {
-        expected: FOL,
-        got: Option<FOL>,
-    },
+    TypeError { expected: T, got: Option<T> },
 
     /// Unification error
-    UnifyError(Value),
-
-    NotAllValuesComputed,
+    UnifyError(Value<T>),
 
     /// SSA Conversion error
     SSAError(crate::ssa::SSAError),
 }
 
-impl std::fmt::Display for InterpreterError {
+impl<T: PartialEq + Clone + Display + Debug> Display for InterpreterError<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InterpreterError::NonMonogamousWrite(id) => {
@@ -227,14 +214,13 @@ impl std::fmt::Display for InterpreterError {
                 write!(f, "Unification error: {}", value)
             }
             InterpreterError::SSAError(e) => write!(f, "SSA error: {:?}", e),
-            InterpreterError::NotAllValuesComputed => write!(f, "Not all values computed"),
         }
     }
 }
 
-impl std::error::Error for InterpreterError {}
+impl<T: Display + Debug + Clone + PartialEq> std::error::Error for InterpreterError<T> {}
 
-impl From<crate::ssa::SSAError> for InterpreterError {
+impl<T> From<crate::ssa::SSAError> for InterpreterError<T> {
     fn from(err: crate::ssa::SSAError) -> Self {
         InterpreterError::SSAError(err)
     }

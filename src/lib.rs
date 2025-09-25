@@ -5,12 +5,11 @@ pub mod fol;
 pub mod definition;
 
 // category of "proof semantics"
-pub mod lang;
+pub mod core;
 
 // language of proofs
 pub mod proof;
 
-pub mod interpreter;
 pub mod ssa;
 pub mod tree;
 

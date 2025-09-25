@@ -1,6 +1,6 @@
 use open_hypergraphs::lax::{Hyperedge, Hypergraph, OpenHypergraph};
 
-use crate::lang::{Arr, Obj};
+use crate::core::{Arr, Obj};
 
 pub fn dual<T: Clone>(f: OpenHypergraph<Obj, Arr<T>>) -> OpenHypergraph<Obj, Arr<T>> {
     let OpenHypergraph {

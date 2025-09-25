@@ -1,4 +1,4 @@
-use crate::lang::{Arr, Biprofile, Builder, Obj, Var};
+use crate::core::{Arr, Biprofile, Builder, Obj, Var};
 use crate::tree::Tree;
 use open_hypergraphs::lax::var;
 

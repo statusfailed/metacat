@@ -110,6 +110,3 @@ impl<O: Debug, A: Debug> Display for SSA<O, A> {
         )
     }
 }
-
-#[cfg(test)]
-mod tests;

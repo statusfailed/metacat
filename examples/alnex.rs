@@ -1,10 +1,12 @@
 use open_hypergraphs::category::*;
 use open_hypergraphs::lax::var::forget::forget_monogamous;
 
+use metacat::core::{
+    Obj, Term,
+    interpreter::{Interpreter, Value},
+};
 use metacat::dual::dual;
 use metacat::fol::{FOL, pretty_print_fol};
-use metacat::interpreter::{Interpreter, Value};
-use metacat::lang::{Obj, Term};
 use metacat::util::build_typed;
 
 // alnex : ⊢ (∀𝑥 ¬ 𝜑 ↔ ¬ ∃𝑥𝜑)
@@ -114,7 +116,7 @@ fn main() {
     let _ = save_svg(&df_ex(), "examples/images/df_ex.svg");
 
     // Run the interpreter on df_ex with no inputs
-    let mut interpreter = Interpreter;
+    let mut interpreter = Interpreter::new();
     let df_ex_tree = interpreter.run(df_ex(), vec![]).unwrap();
     print_interpreter_result("df_ex", &df_ex_tree);
 
@@ -137,7 +139,7 @@ fn main() {
     }
 }
 
-fn print_interpreter_result(name: &str, values: &Vec<Value>) {
+fn print_interpreter_result(name: &str, values: &Vec<Value<FOL>>) {
     for (i, value) in values.iter().enumerate() {
         println!("{}.{i}: {}", name, pretty_print_fol(value));
     }
