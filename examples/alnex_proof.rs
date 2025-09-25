@@ -164,7 +164,8 @@ fn main() {
     let displayable = proof
         .map_edges(|e| format!("{e:?}"))
         .with_nodes(|_| result)
-        .unwrap();
+        .unwrap()
+        .map_nodes(|v| pretty_print_fol(&v));
     println!("writing to alnex_proof.svg");
     save_svg(&displayable, "alnex_proof.svg");
 }
