@@ -75,5 +75,8 @@ pub fn check(proof: Proof, env: Env<FOL>) -> Result<Vec<Tree<Obj, FOL>>, Interpr
     // If a proof has free variables, we can't really check it??
     // WRONG: we need to use its *type maps* to generate them!
     // Let's assume it's empty for now.
-    Interpreter.run(inlined, vec![])
+
+    // TODO: convert the output (HashMap<NodeId, Value>) to a Vec<Value>. NodeId are newtype for
+    // usize.
+    Ok(Interpreter.run_state(inlined, vec![])?.0)
 }

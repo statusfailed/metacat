@@ -12,20 +12,30 @@ pub type Value = Tree<Obj, FOL>;
 pub struct Interpreter;
 
 impl Interpreter {
-    /// Run the interpreter with specified input values
     pub fn run(
+        &mut self,
+        term: Term<FOL>,
+        values: Vec<Value>,
+    ) -> Result<Vec<Value>, InterpreterError> {
+        Ok(self.run_state(term, values)?.1)
+    }
+
+    /// Run the interpreter with specified input values
+    pub fn run_state(
         &mut self,
         mut term: Term<FOL>,
         values: Vec<Value>,
-    ) -> Result<Vec<Value>, InterpreterError> {
+    ) -> Result<(Vec<Value>, Vec<Value>), InterpreterError> {
         assert_eq!(values.len(), term.sources.len());
 
         term.quotient();
 
         // create initial state by moving argument values into state
-        let mut state = HashMap::<NodeId, Value>::new();
+        //let mut state = HashMap::<NodeId, Value>::new();
+        let mut state: Vec<Option<Value>> = vec![None; term.hypergraph.nodes.len()];
+
         for (node_id, value) in term.sources.iter().zip(values) {
-            state.insert(*node_id, value);
+            state[node_id.0] = Some(value);
         }
 
         // Save target nodes before moving term
@@ -37,8 +47,8 @@ impl Interpreter {
                 // get args: Vec<Value> by popping each id in op.sources from state
                 let mut args = Vec::new();
                 for (node_id, _) in &op.sources {
-                    match state.remove(node_id) {
-                        Some(value) => args.push(value),
+                    match &state[node_id.0] {
+                        Some(value) => args.push(value.clone()),
                         None => return Err(InterpreterError::NonMonogamousRead(*node_id)),
                     }
                 }
@@ -47,8 +57,10 @@ impl Interpreter {
 
                 // write each result into state at op.targets ids
                 for ((node_id, _), result) in op.targets.iter().zip(results) {
-                    if state.insert(*node_id, result).is_some() {
+                    if state[node_id.0].is_some() {
                         return Err(InterpreterError::NonMonogamousWrite(*node_id));
+                    } else {
+                        state[node_id.0] = Some(result);
                     }
                 }
             }
@@ -57,13 +69,16 @@ impl Interpreter {
         // Extract target values and return them
         let mut target_values = Vec::new();
         for target_node in &target_nodes {
-            match state.remove(target_node) {
-                Some(value) => target_values.push(value),
+            match &state[target_node.0] {
+                Some(value) => target_values.push(value.clone()),
                 None => return Err(InterpreterError::NonMonogamousRead(*target_node)),
             }
         }
 
-        Ok(target_values)
+        match state.into_iter().collect() {
+            Some(state) => Ok((state, target_values)),
+            None => Err(InterpreterError::NotAllValuesComputed),
+        }
     }
 
     pub fn apply(
@@ -173,13 +188,21 @@ pub enum InterpreterError {
     NonMonogamousRead(NodeId),
 
     /// Wrong number of arguments
-    ArityError { expected: usize, got: usize },
+    ArityError {
+        expected: usize,
+        got: usize,
+    },
 
     /// Type error
-    TypeError { expected: FOL, got: Option<FOL> },
+    TypeError {
+        expected: FOL,
+        got: Option<FOL>,
+    },
 
     /// Unification error
     UnifyError(Value),
+
+    NotAllValuesComputed,
 
     /// SSA Conversion error
     SSAError(crate::ssa::SSAError),
@@ -204,6 +227,7 @@ impl std::fmt::Display for InterpreterError {
                 write!(f, "Unification error: {}", value)
             }
             InterpreterError::SSAError(e) => write!(f, "SSA error: {:?}", e),
+            InterpreterError::NotAllValuesComputed => write!(f, "Not all values computed"),
         }
     }
 }

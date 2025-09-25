@@ -1,5 +1,5 @@
 use open_hypergraphs::category::*;
-use open_hypergraphs::lax::{var, var::forget::forget_monogamous};
+use open_hypergraphs::lax::{OpenHypergraph, var, var::forget::forget_monogamous};
 
 use metacat::definition::Def;
 use metacat::dual::dual;
@@ -10,6 +10,7 @@ use metacat::proof;
 use metacat::util::build_typed;
 
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 
 fn build_env() -> HashMap<proof::Path, proof::Type<FOL>> {
     HashMap::from([
@@ -142,7 +143,10 @@ fn con2bii() -> Term<FOL> {
     d.compose(&t).unwrap()
 }
 
-fn save_svg(term: &Term<FOL>, path: &str) {
+fn save_svg<O: PartialEq + Clone + Display + Debug, A: PartialEq + Clone + Display + Debug>(
+    term: &OpenHypergraph<O, A>,
+    path: &str,
+) {
     let _ = metacat::svg::save_svg(&term, path);
 }
 
@@ -151,12 +155,18 @@ fn main() {
         .into_iter()
         .map(|(k, v)| (k, v.composed()))
         .collect();
-    let proof = build_proof();
+    let proof = forget_monogamous(&build_proof());
 
     // TODO: get strings for every node in the graph, plot it.
-    let result = proof::check(proof, env);
+    let result = proof::check(proof.clone(), env).unwrap();
     println!("{:?}", result);
-    print_interpreter_result("alnex", &result.unwrap());
+    print_interpreter_result("alnex", &result);
+
+    let displayable = proof.map_edges(|e| format!("{:?}", e));
+    //.with_nodes(|_| result)
+    //.unwrap();
+    println!("writing to alnex_proof.svg");
+    save_svg(&displayable, "alnex_proof.svg");
 }
 
 fn print_interpreter_result(name: &str, values: &Vec<Value>) {
