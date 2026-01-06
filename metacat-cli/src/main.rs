@@ -7,6 +7,7 @@ use metacat::check::to_type_map;
 
 // CLI utils
 use clap::{Parser, Subcommand};
+use colored::*;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -87,16 +88,22 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
         match result {
             Ok(_) => {
                 println!(
-                    "✅ {} : {} -> {}",
-                    declaration.name, declaration.source_map, declaration.target_map
+                    "{} {} : {} -> {}",
+                    "[✓]".green().bold(),
+                    declaration.name,
+                    declaration.source_map,
+                    declaration.target_map
                 );
             }
             Err(e) => {
                 println!(
-                    "❌ {} : {} -> {}",
-                    declaration.name, declaration.source_map, declaration.target_map
+                    "{} {} : {} -> {}",
+                    "[✗]".red().bold(),
+                    declaration.name,
+                    declaration.source_map,
+                    declaration.target_map
                 );
-                println!("   Error: {}", e);
+                println!("Checking '{}' failed: {}", declaration.name, e);
             }
         }
     }
