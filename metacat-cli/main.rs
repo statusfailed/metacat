@@ -5,18 +5,50 @@ use metacat::check::to_type_map;
 use metacat::prop::*;
 use metacat::theory::*;
 
+fn main() -> anyhow::Result<()> {
+    let text = std::fs::read_to_string("fol.hex")?;
+    let hexprs: Vec<Hexpr> = parse_hexprs(&text)?;
+
+    println!("got hexprs:");
+    for hexpr in hexprs.iter() {
+        println!("{}", hexpr);
+    }
+
+    // "object theory" morphisms *logical symbols* and *terms* of the theory
+    let object_theory = read_theory(&PropObj, "object", &hexprs)?;
+
+    // "arrow theory" morphisms are the *axioms* and *proofs*
+    let arrow_theory = read_theory(&object_theory, "arrow", &hexprs)?;
+
+    for def in read_definitions("def-arrow", &hexprs) {
+        // TODO: remove unwrap
+        let def_hexpr = def.definition.unwrap();
+        println!(
+            "checking definition {} : {} -> {} = {}",
+            def.name, def.source_map, def.target_map, def_hexpr
+        );
+
+        // NOTE: we use forget_labels instead of unify, since we have a single-sorted theory.
+        let term = forget_labels(try_interpret(&arrow_theory, &def_hexpr)?);
+        let source = forget_labels(try_interpret(&object_theory, &def.source_map)?);
+        let target = forget_labels(try_interpret(&object_theory, &def.target_map)?);
+
+        let type_term = to_type_map(arrow_theory.clone(), source, target, &term);
+        let result = eval_type(type_term);
+        println!("eval_type: {:?}", result);
+    }
+
+    Ok(())
+}
+
+/// A declaration is matched from hexprs of the form
+/// `(<theory> <name> : <src> -> <target> = <definition>)`
+/// where the `= <definition>` part is optional.
 struct Declaration {
     name: Operation,
     source_map: Hexpr,
     target_map: Hexpr,
     definition: Option<Hexpr>,
-}
-
-fn is_operation(hexpr: &Hexpr, literal: &str) -> bool {
-    match hexpr {
-        Hexpr::Operation(op) => op.as_str() == literal,
-        _ => false,
-    }
 }
 
 fn parse_declaration(hexpr: &Hexpr, declaration_literal: &str) -> Option<Declaration> {
@@ -55,6 +87,13 @@ fn parse_declaration(hexpr: &Hexpr, declaration_literal: &str) -> Option<Declara
     })
 }
 
+fn is_operation(hexpr: &Hexpr, literal: &str) -> bool {
+    match hexpr {
+        Hexpr::Operation(op) => op.as_str() == literal,
+        _ => false,
+    }
+}
+
 fn read_theory<S: Signature<Obj = ()>>(
     signature: &S,
     declaration_literal: &str,
@@ -82,42 +121,6 @@ fn read_definitions(declaration_literal: &str, hexprs: &Vec<Hexpr>) -> Vec<Decla
         .filter_map(|hexpr| parse_declaration(hexpr, declaration_literal))
         .filter(|decl| decl.definition.is_some())
         .collect()
-}
-
-fn main() -> anyhow::Result<()> {
-    let text = std::fs::read_to_string("fol.hex")?;
-    let hexprs: Vec<Hexpr> = parse_hexprs(&text)?;
-
-    println!("got hexprs:");
-    for hexpr in hexprs.iter() {
-        println!("{}", hexpr);
-    }
-
-    // "object theory" morphisms *logical symbols* and *terms* of the theory
-    let object_theory = read_theory(&PropObj, "object", &hexprs)?;
-
-    // "arrow theory" morphisms are the *axioms* and *proofs*
-    let arrow_theory = read_theory(&object_theory, "arrow", &hexprs)?;
-
-    for def in read_definitions("def-arrow", &hexprs) {
-        // TODO: remove unwrap
-        let def_hexpr = def.definition.unwrap();
-        println!(
-            "checking definition {} : {} -> {} = {}",
-            def.name, def.source_map, def.target_map, def_hexpr
-        );
-
-        // NOTE: we use forget_labels instead of unify, since we have a single-sorted theory.
-        let term = forget_labels(try_interpret(&arrow_theory, &def_hexpr)?);
-        let source = forget_labels(try_interpret(&object_theory, &def.source_map)?);
-        let target = forget_labels(try_interpret(&object_theory, &def.target_map)?);
-
-        let type_term = to_type_map(arrow_theory.clone(), source, target, &term);
-        let result = eval_type(type_term);
-        println!("eval_type: {:?}", result);
-    }
-
-    Ok(())
 }
 
 fn forget_labels<T, A>(
