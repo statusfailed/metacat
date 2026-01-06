@@ -14,8 +14,9 @@ pub struct SSA<O, A> {
     pub targets: Vec<(lax::NodeId, O)>, // target nodes and type labels
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, thiserror::Error)]
 pub enum SSAError {
+    #[error("Cycle detected")]
     Cycle,
 }
 

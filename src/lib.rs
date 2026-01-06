@@ -5,3 +5,6 @@ pub mod tree;
 
 pub mod prop;
 pub mod theory;
+
+pub mod check;
+pub mod dual;

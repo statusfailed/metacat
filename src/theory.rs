@@ -15,14 +15,17 @@ impl std::fmt::Display for OperationKey {
     }
 }
 
+#[derive(Clone)]
 pub struct Theory<A> {
     operations: HashMap<OperationKey, (ObjTerm<A>, ObjTerm<A>)>,
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("{0:?}")]
 pub enum Error {
+    #[error("No such operation {0}")]
     NoSuchOperation(OperationKey),
+    #[error("Operation source and target maps must have same domain")]
+    InvalidType,
 }
 
 impl<A> Theory<A> {
@@ -32,13 +35,24 @@ impl<A> Theory<A> {
         }
     }
 
+    pub fn type_maps(&self, op: &OperationKey) -> &(OpenHypergraph<(), A>, OpenHypergraph<(), A>) {
+        &self.operations[&op]
+    }
+}
+
+impl<A: Clone> Theory<A> {
     pub fn add_operation(
         &mut self,
         name: Operation,
         source: OpenHypergraph<(), A>,
         target: OpenHypergraph<(), A>,
-    ) {
+    ) -> Result<(), Error> {
+        if source.source() != target.source() {
+            return Err(Error::InvalidType);
+        }
+        assert_eq!(source.source(), target.source());
         self.operations.insert(OperationKey(name), (source, target));
+        Ok(())
     }
 }
 
