@@ -1,4 +1,5 @@
 use hexpr::*;
+use open_hypergraphs::lax::OpenHypergraph;
 
 use metacat::check::eval_type;
 use metacat::check::to_type_map;
@@ -36,6 +37,12 @@ enum Command {
         #[arg()]
         path: PathBuf,
     },
+    Arrow {
+        #[arg()]
+        path: PathBuf,
+        #[arg()]
+        name: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -53,12 +60,12 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Check { path } => check(path),
+        Command::Arrow { path, name } => arrow(path, name),
     }
 }
 
-/// Read a file of `Declaration`s into object and arrow theories,
-/// then check all definitions.
-fn check(path: PathBuf) -> anyhow::Result<()> {
+/// Load theories and hexprs from a file
+fn load_theories(path: PathBuf) -> anyhow::Result<(Vec<Hexpr>, Theory<Nat>, Theory<OperationKey>)> {
     let text = std::fs::read_to_string(path)?;
     let hexprs: Vec<Hexpr> = parse_hexprs(&text)?;
 
@@ -72,6 +79,14 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
 
     // "arrow theory" morphisms are the *axioms* and *proofs*
     let arrow_theory = read_theory(&object_theory, "arrow", &hexprs)?;
+
+    Ok((hexprs, object_theory, arrow_theory))
+}
+
+/// Read a file of `Declaration`s into object and arrow theories,
+/// then check all definitions.
+fn check(path: PathBuf) -> anyhow::Result<()> {
+    let (hexprs, object_theory, arrow_theory) = load_theories(path)?;
 
     for def in read_definitions("def-arrow", &hexprs) {
         // TODO: remove unwrap
@@ -100,6 +115,29 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
             Err(e) => {
                 println!("❌ {} : {} -> {}", def.name, def.source_map, def.target_map);
                 println!("   Error: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Load theories from a file and print the hexpr for a given arrow name
+fn arrow(path: PathBuf, name: String) -> anyhow::Result<()> {
+    log::info!("Loading theories to find arrow: {}", name);
+    let (hexprs, _object_theory, _arrow_theory) = load_theories(path)?;
+
+    // NOTE: operation_key is guaranteed to be in the theory; try_parse_op will fail otherwise.
+    //let operation_key = arrow_theory.try_parse_op(&name.parse()?)?;
+    // Look for a definition with the given name
+
+    // TODO: load_theories should make a hashmap of name → definition
+    let definitions = read_definitions("def-arrow", &hexprs);
+    for def in definitions {
+        if def.name.as_str() == name {
+            if let Some(def_hexpr) = def.definition {
+                println!("{}", def_hexpr);
+                return Ok(());
             }
         }
     }
