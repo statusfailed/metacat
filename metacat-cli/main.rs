@@ -5,6 +5,10 @@ use metacat::check::to_type_map;
 use metacat::prop::*;
 use metacat::theory::*;
 
+// CLI utils
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+
 /// A declaration is matched from hexprs of the form
 /// `(<theory> <name> : <src> -> <target> = <definition>)`
 /// where the `= <definition>` part is optional.
@@ -15,15 +19,52 @@ struct Declaration {
     definition: Option<Hexpr>,
 }
 
+#[derive(Parser)]
+#[command(name = "metacat-cli")]
+#[command(about = "A tool for checking categorical definitions")]
+struct Cli {
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    Check {
+        #[arg()]
+        path: PathBuf,
+    },
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
+    // Initialize logger based on verbosity level
+    let log_level = match cli.verbose {
+        0 => log::LevelFilter::Warn,
+        1 => log::LevelFilter::Info,
+        2 => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Trace,
+    };
+
+    env_logger::Builder::new().filter_level(log_level).init();
+
+    match cli.command {
+        Command::Check { path } => check(path),
+    }
+}
+
 /// Read a file of `Declaration`s into object and arrow theories,
 /// then check all definitions.
-fn main() -> anyhow::Result<()> {
-    let text = std::fs::read_to_string("fol.hex")?;
+fn check(path: PathBuf) -> anyhow::Result<()> {
+    let text = std::fs::read_to_string(path)?;
     let hexprs: Vec<Hexpr> = parse_hexprs(&text)?;
 
-    println!("got hexprs:");
+    log::info!("got hexprs:");
     for hexpr in hexprs.iter() {
-        println!("{}", hexpr);
+        log::info!("{}", hexpr);
     }
 
     // "object theory" morphisms *logical symbols* and *terms* of the theory
@@ -35,9 +76,12 @@ fn main() -> anyhow::Result<()> {
     for def in read_definitions("def-arrow", &hexprs) {
         // TODO: remove unwrap
         let def_hexpr = def.definition.unwrap();
-        println!(
+        log::info!(
             "checking definition {} : {} -> {} = {}",
-            def.name, def.source_map, def.target_map, def_hexpr
+            def.name,
+            def.source_map,
+            def.target_map,
+            def_hexpr
         );
 
         // NOTE: we use forget_labels instead of unify, since we have a single-sorted theory.
@@ -47,7 +91,17 @@ fn main() -> anyhow::Result<()> {
 
         let type_term = to_type_map(arrow_theory.clone(), source, target, &term);
         let result = eval_type(type_term);
-        println!("eval_type: {:?}", result);
+        log::debug!("eval_type: {:?}", result);
+
+        match result {
+            Ok(_) => {
+                println!("✅ {} : {} -> {}", def.name, def.source_map, def.target_map);
+            }
+            Err(e) => {
+                println!("❌ {} : {} -> {}", def.name, def.source_map, def.target_map);
+                println!("   Error: {}", e);
+            }
+        }
     }
 
     Ok(())
