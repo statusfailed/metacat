@@ -1,12 +1,18 @@
 mod load;
 use load::TheoryBundle;
 
+#[derive(ValueEnum, Clone, Debug)]
+enum Format {
+    Hexpr,
+    Svg,
+}
+
 use hexpr::*;
 use metacat::check::eval_type;
 use metacat::check::to_type_map;
 
 // CLI utils
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use colored::*;
 use std::path::PathBuf;
 
@@ -32,6 +38,8 @@ enum Command {
         path: PathBuf,
         #[arg()]
         name: String,
+        #[arg(short, long, value_enum, default_value_t = Format::Hexpr)]
+        format: Format,
     },
 }
 
@@ -50,7 +58,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Check { path } => check(path),
-        Command::Arrow { path, name } => arrow(path, name),
+        Command::Arrow { path, name, format } => arrow(path, name, format),
     }
 }
 
@@ -89,7 +97,7 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
             Ok(_) => {
                 println!(
                     "{} {} : {} -> {}",
-                    "[✓]".green().bold(),
+                    "[✓]".green(),
                     declaration.name,
                     declaration.source_map,
                     declaration.target_map
@@ -98,7 +106,7 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
             Err(e) => {
                 println!(
                     "{} {} : {} -> {}",
-                    "[✗]".red().bold(),
+                    "[✗]".red(),
                     declaration.name,
                     declaration.source_map,
                     declaration.target_map
@@ -112,7 +120,7 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
 }
 
 /// Load theories from a file and print the hexpr for a given arrow name
-fn arrow(path: PathBuf, name: String) -> anyhow::Result<()> {
+fn arrow(path: PathBuf, name: String, format: Format) -> anyhow::Result<()> {
     log::info!("Loading theories to find arrow: {}", name);
     let bundle = TheoryBundle::from_file(path)?;
 
@@ -122,7 +130,21 @@ fn arrow(path: PathBuf, name: String) -> anyhow::Result<()> {
     // Look for a definition with the given name
     if let Some(declaration) = bundle.definitions.get(operation) {
         let def_hexpr = declaration.definition.as_ref().unwrap(); // Safe because we only store definitions with Some(hexpr)
-        println!("{}", def_hexpr);
+        match format {
+            Format::Hexpr => {
+                println!("{}", def_hexpr);
+            }
+            Format::Svg => {
+                use open_hypergraphs_dot::{Options, svg::to_svg_with};
+                use std::io::Write;
+                let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
+                term.quotient();
+                std::io::stdout().write_all(&to_svg_with(
+                    &term.clone().map_nodes(|_| ""),
+                    &Options::default().display().tb(),
+                )?)?;
+            }
+        }
     } else {
         return Err(anyhow::anyhow!("definition '{}' not found", name));
     }
