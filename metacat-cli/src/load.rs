@@ -15,7 +15,7 @@ pub enum LoadError {
     #[error("PropObj interpret error: {0}")]
     PropObjInterpretError(#[from] hexpr::interpret::Error<std::num::ParseIntError>),
     #[error("Parse error: {0}")]
-    ParseError(String),
+    ParseError(#[from] hexpr::ParseError),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
@@ -42,8 +42,7 @@ pub struct Declaration {
 impl TheoryBundle {
     /// Load a TheoryBundle from a text string
     pub fn from_text(text: &str) -> Result<Self, LoadError> {
-        let hexprs: Vec<Hexpr> =
-            parse_hexprs(text).map_err(|e| LoadError::ParseError(format!("{}", e)))?;
+        let hexprs: Vec<Hexpr> = parse_hexprs(text)?;
 
         let declarations: Vec<Declaration> = hexprs
             .into_iter()
