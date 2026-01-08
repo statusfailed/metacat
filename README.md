@@ -1,7 +1,7 @@
 # metacat
 
-A metamath-zero-inspired theorem prover using
-[open-hypergraphs](https://github.com/hellas-ai/open-hypergraphs) for syntax.
+A theorem prover inspired by [metamath zero](https://github.com/digama0/mm0)
+using [open-hypergraphs](https://github.com/hellas-ai/open-hypergraphs) for syntax.
 
 # usage
 
