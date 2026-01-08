@@ -1,5 +1,6 @@
 use open_hypergraphs::lax::functor::Functor;
 use open_hypergraphs::lax::*;
+use std::fmt::Debug;
 use thiserror::Error;
 
 //use crate::ssa::{SSA, ssa};
@@ -12,14 +13,14 @@ use crate::{dual, dual::Dual};
 pub enum EvalError {
     #[error("SSA decomposition failed")]
     SSAError(#[from] SSAError),
-    #[error("Could not merge values")]
-    MergeError,
-    #[error("Could not pop symbol")]
-    MatchError(EdgeId),
+    #[error("Could not merge values {0} and {1}")]
+    MergeError(String, String),
+    #[error("Could not pop symbol {1} of {0:?}")]
+    MatchError(EdgeId, String),
 }
 
 /// Evaluate a type map
-pub fn eval_type<O: Clone + Eq>(
+pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     f: OpenHypergraph<(), Dual<O>>,
 ) -> Result<Vec<Tree<(), O>>, EvalError> {
     // evaluation state
@@ -59,10 +60,20 @@ pub fn eval_type<O: Clone + Eq>(
                             children = match children {
                                 None => Some(node_children),
                                 Some(children) if children == node_children => Some(children),
-                                _ => return Err(EvalError::MatchError(ssa_value.edge_id)),
+                                _ => {
+                                    return Err(EvalError::MatchError(
+                                        ssa_value.edge_id,
+                                        format!("{op:?} (children didn't match)"),
+                                    ));
+                                }
                             }
                         }
-                        _ => return Err(EvalError::MatchError(ssa_value.edge_id)),
+                        _ => {
+                            return Err(EvalError::MatchError(
+                                ssa_value.edge_id,
+                                format!("{op:?}"),
+                            ));
+                        }
                     }
                 }
 
@@ -80,13 +91,16 @@ pub fn eval_type<O: Clone + Eq>(
     Ok(state)
 }
 
-pub fn merge<O: Eq>(value: &mut Tree<(), O>, new: Tree<(), O>) -> Result<(), EvalError> {
+pub fn merge<O: Debug + Eq>(value: &mut Tree<(), O>, new: Tree<(), O>) -> Result<(), EvalError> {
     // Overwrite a Leaf, but ensure other values are equal
     match value {
         Tree::Leaf(_, _) => *value = new,
         t => {
             if *t != new {
-                return Err(EvalError::MergeError);
+                return Err(EvalError::MergeError(
+                    format!("{:?}", t),
+                    format!("{:?}", new),
+                ));
             }
         }
     }
@@ -104,6 +118,7 @@ pub fn to_type_map<O: Clone>(
     // The dualizer functor maps each generator in `arrow` into src†;tgt
     let type_map = AsType(theory).map_arrow(&arrow);
 
+    // TODO: remove unwrap()
     let mut result = dual::into_fwd(source)
         .compose(&type_map)
         .unwrap()
@@ -117,7 +132,7 @@ pub fn to_type_map<O: Clone>(
 /// Map generating arrows of a Theory into the composites `(src† ; tgt)`
 // TODO: remove Clone; currently required unnecessarily by open hypergraphs functor impl
 #[derive(Clone)]
-pub struct AsType<O>(Theory<O>);
+pub struct AsType<O>(pub Theory<O>);
 
 // wi, wn both are OperationKey
 impl<O: Clone> Functor<(), OperationKey, (), Dual<O>> for AsType<O> {

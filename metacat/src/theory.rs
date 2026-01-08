@@ -24,8 +24,8 @@ pub struct Theory<A> {
 pub enum Error {
     #[error("No such operation {0}")]
     NoSuchOperation(OperationKey),
-    #[error("Operation source and target maps must have same domain")]
-    InvalidType,
+    #[error("Operation {0}: source and target maps must have same domain")]
+    InvalidType(Operation),
 }
 
 impl<A> Theory<A> {
@@ -33,6 +33,10 @@ impl<A> Theory<A> {
         Self {
             operations: HashMap::new(),
         }
+    }
+
+    pub fn operations(&self) -> impl Iterator<Item = &OperationKey> {
+        self.operations.keys()
     }
 
     pub fn type_maps(&self, op: &OperationKey) -> &(OpenHypergraph<(), A>, OpenHypergraph<(), A>) {
@@ -48,7 +52,7 @@ impl<A: Clone> Theory<A> {
         target: OpenHypergraph<(), A>,
     ) -> Result<(), Error> {
         if source.source() != target.source() {
-            return Err(Error::InvalidType);
+            return Err(Error::InvalidType(name));
         }
         assert_eq!(source.source(), target.source());
         self.operations.insert(OperationKey(name), (source, target));

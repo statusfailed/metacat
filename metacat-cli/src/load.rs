@@ -76,10 +76,13 @@ where
     let mut theory = Theory::new();
     log::info!("reading {} theory", declaration_literal);
     for hexpr in hexprs {
-        log::info!("load {}", hexpr);
+        log::debug!("load {}", hexpr);
         if let Some(decl) = Declaration::try_from_hexpr(hexpr, declaration_literal) {
-            let source = unify(try_interpret(signature, &decl.source_map)?)?;
-            let target = unify(try_interpret(signature, &decl.target_map)?)?;
+            log::trace!("converting source map");
+            let source = forget_labels(try_interpret(signature, &decl.source_map)?);
+            log::trace!("converting target map");
+            let target = forget_labels(try_interpret(signature, &decl.target_map)?);
+            log::trace!("addding operation");
             theory.add_operation(decl.name, source, target)?;
         }
     }
@@ -141,4 +144,10 @@ fn is_operation(hexpr: &Hexpr, literal: &str) -> bool {
         Hexpr::Operation(op) => op.as_str() == literal,
         _ => false,
     }
+}
+
+fn forget_labels<T, A>(
+    f: open_hypergraphs::lax::OpenHypergraph<T, A>,
+) -> open_hypergraphs::lax::OpenHypergraph<(), A> {
+    f.map_nodes(|_| ())
 }

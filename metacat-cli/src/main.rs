@@ -23,6 +23,9 @@ struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
 
+    #[arg(long, help = "Force enable colors")]
+    color: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -54,7 +57,19 @@ fn main() -> anyhow::Result<()> {
         _ => log::LevelFilter::Trace,
     };
 
-    env_logger::Builder::new().filter_level(log_level).init();
+    // Force enable colors if requested
+    if cli.color {
+        colored::control::set_override(true);
+    }
+
+    env_logger::Builder::new()
+        .filter_level(log_level)
+        .write_style(if cli.color {
+            env_logger::WriteStyle::Always
+        } else {
+            env_logger::WriteStyle::Auto
+        })
+        .init();
 
     match cli.command {
         Command::Check { path } => check(path),
@@ -90,6 +105,7 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
         let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
 
         let type_term = to_type_map(arrow_theory.clone(), source, target, &term);
+
         let result = eval_type(type_term);
         log::debug!("eval_type: {:?}", result);
 
