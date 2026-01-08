@@ -4,10 +4,24 @@ use metacat::theory::{OperationKey, Theory};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+#[derive(Debug, thiserror::Error)]
+pub enum LoadError {
+    #[error("Invalid declaration: {0}")]
+    InvalidDeclaration(Hexpr),
+    #[error("Theory error: {0}")]
+    TheoryError(#[from] metacat::theory::Error),
+    #[error("Hexpr conversion error: {0}")]
+    InterpretError(#[from] hexpr::interpret::Error<metacat::theory::Error>),
+    #[error("PropObj interpret error: {0}")]
+    PropObjInterpretError(#[from] hexpr::interpret::Error<std::num::ParseIntError>),
+    #[error("Parse error: {0}")]
+    ParseError(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
 /// A complete parsed metacat file containing theories and definitions
 pub struct TheoryBundle {
-    #[allow(unused)]
-    pub hexprs: Vec<Hexpr>,
     pub object_theory: Theory<Nat>,
     pub arrow_theory: Theory<OperationKey>, // contains the types of both arrows *and* defined arrows
     // def-arrow maps have their bodies (rhs of =) here.
@@ -18,6 +32,7 @@ pub struct TheoryBundle {
 /// `(<theory> <name> : <src> -> <target> = <definition>)`
 /// where the `= <definition>` part is optional.
 pub struct Declaration {
+    pub theory: Operation,
     pub name: Operation,
     pub source_map: Hexpr,
     pub target_map: Hexpr,
@@ -26,30 +41,34 @@ pub struct Declaration {
 
 impl TheoryBundle {
     /// Load a TheoryBundle from a text string
-    pub fn from_text(text: &str) -> anyhow::Result<Self> {
-        let hexprs: Vec<Hexpr> = parse_hexprs(text)?;
+    pub fn from_text(text: &str) -> Result<Self, LoadError> {
+        let hexprs: Vec<Hexpr> =
+            parse_hexprs(text).map_err(|e| LoadError::ParseError(format!("{}", e)))?;
 
-        log::info!("loading hexprs...");
-        for hexpr in hexprs.iter() {
-            log::info!("load {}", hexpr);
-        }
+        let declarations: Vec<Declaration> = hexprs
+            .into_iter()
+            .map(|hexpr| {
+                Declaration::try_from_hexpr(hexpr.clone())
+                    .ok_or_else(|| LoadError::InvalidDeclaration(hexpr))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
-        // "object theory" morphisms *logical symbols* and *terms* of the theory
-        let object_theory = read_theory(&PropObj, "object", &hexprs)?;
+        Self::from_declarations(declarations)
+    }
 
-        // "arrow theory" morphisms are the *axioms* and *proofs*
-        let arrow_theory = read_theory(&object_theory, "arrow", &hexprs)?;
+    fn from_declarations(decls: Vec<Declaration>) -> Result<Self, LoadError> {
+        let object_theory = read_object_theory(&decls)?;
+        let arrow_theory = read_arrow_theory(&object_theory, &decls)?;
 
-        // Load definitions
+        // Collect definitions
         let mut definitions = HashMap::new();
-        for def in read_definitions("def-arrow", &hexprs) {
-            if def.definition.is_some() {
-                definitions.insert(def.name.clone(), def);
+        for decl in decls {
+            if decl.definition.is_some() && decl.theory.as_str() == "def-arrow" {
+                definitions.insert(decl.name.clone(), decl);
             }
         }
 
-        Ok(TheoryBundle {
-            hexprs,
+        Ok(Self {
             object_theory,
             arrow_theory,
             definitions,
@@ -57,71 +76,33 @@ impl TheoryBundle {
     }
 
     /// Load a TheoryBundle from a file
-    pub fn from_file(path: PathBuf) -> anyhow::Result<Self> {
+    pub fn from_file(path: PathBuf) -> Result<Self, LoadError> {
         let text = std::fs::read_to_string(path)?;
         Self::from_text(&text)
     }
 }
 
-/// read a theory from a list of hexprs
-fn read_theory<S: Signature<Obj = ()>>(
-    signature: &S,
-    declaration_literal: &str,
-    hexprs: &Vec<Hexpr>,
-) -> anyhow::Result<Theory<S::Arr>>
-where
-    S::Arr: Clone,
-    S::Error: Sync + Send + std::error::Error + 'static,
-{
-    let mut theory = Theory::new();
-    log::info!("reading {} theory", declaration_literal);
-    for hexpr in hexprs {
-        log::debug!("load {}", hexpr);
-        if let Some(decl) = Declaration::try_from_hexpr(hexpr, declaration_literal) {
-            log::trace!("converting source map");
-            let source = forget_labels(try_interpret(signature, &decl.source_map)?);
-            log::trace!("converting target map");
-            let target = forget_labels(try_interpret(signature, &decl.target_map)?);
-            log::trace!("addding operation");
-            theory.add_operation(decl.name, source, target)?;
-        }
-    }
-
-    Ok(theory)
-}
-
-/// Read a set of declarations from a list of hexprs
-fn read_definitions(declaration_literal: &str, hexprs: &Vec<Hexpr>) -> Vec<Declaration> {
-    hexprs
-        .iter()
-        .filter_map(|hexpr| Declaration::try_from_hexpr(hexpr, declaration_literal))
-        .filter(|decl| decl.definition.is_some())
-        .collect()
-}
-
+// TODO: avoid unnecessary cloning in here; it takes ownership!
 impl Declaration {
     /// Try and match a hexpr of the form
     /// `(<theory> <name> : <src> -> <target> = <definition>)`
-    fn try_from_hexpr(hexpr: &Hexpr, declaration_literal: &str) -> Option<Declaration> {
+    fn try_from_hexpr(hexpr: Hexpr) -> Option<Declaration> {
         let Hexpr::Composition(parts) = hexpr else {
             return None;
         };
 
-        let (name, source, target, def) = match &parts[..] {
+        let (lit, name, source, target, def) = match &parts[..] {
             [lit, name, colon, source, arrow, target]
-                if is_operation(lit, declaration_literal)
-                    && is_operation(colon, ":")
-                    && is_operation(arrow, "->") =>
+                if is_operation(colon, ":") && is_operation(arrow, "->") =>
             {
-                (name, source, target, None)
+                (lit, name, source, target, None)
             }
             [lit, name, colon, source, arrow, target, eq, def]
-                if is_operation(lit, declaration_literal)
-                    && is_operation(colon, ":")
+                if is_operation(colon, ":")
                     && is_operation(arrow, "->")
                     && is_operation(eq, "=") =>
             {
-                (name, source, target, Some(def))
+                (lit, name, source, target, Some(def))
             }
             _ => return None,
         };
@@ -130,13 +111,59 @@ impl Declaration {
             return None;
         };
 
+        let Hexpr::Operation(theory) = lit else {
+            return None;
+        };
+
+        // Validate theory name
+        match theory.as_str() {
+            "object" | "arrow" | "def-arrow" => {}
+            _ => return None,
+        }
+
         Some(Declaration {
+            theory: theory.clone(),
             name: name.clone(),
             source_map: source.clone(),
             target_map: target.clone(),
             definition: def.cloned(),
         })
     }
+}
+
+/// read object theory from declarations
+fn read_object_theory(declarations: &[Declaration]) -> Result<Theory<Nat>, LoadError> {
+    let mut theory = Theory::new();
+    log::info!("reading object theory");
+    for decl in declarations {
+        if decl.theory.as_str() != "object" {
+            continue;
+        }
+        log::debug!("load {}", &decl.name);
+        let source = forget_labels(try_interpret(&PropObj, &decl.source_map)?);
+        let target = forget_labels(try_interpret(&PropObj, &decl.target_map)?);
+        theory.add_operation(decl.name.clone(), source, target)?;
+    }
+    Ok(theory)
+}
+
+/// read arrow theory from declarations
+fn read_arrow_theory(
+    object_theory: &Theory<Nat>,
+    declarations: &[Declaration],
+) -> Result<Theory<OperationKey>, LoadError> {
+    let mut theory = Theory::new();
+    log::info!("reading arrow theory");
+    for decl in declarations {
+        if decl.theory.as_str() != "arrow" && decl.theory.as_str() != "def-arrow" {
+            continue;
+        }
+        log::debug!("load {}", &decl.name);
+        let source = forget_labels(try_interpret(object_theory, &decl.source_map)?);
+        let target = forget_labels(try_interpret(object_theory, &decl.target_map)?);
+        theory.add_operation(decl.name.clone(), source, target)?;
+    }
+    Ok(theory)
 }
 
 fn is_operation(hexpr: &Hexpr, literal: &str) -> bool {
