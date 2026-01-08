@@ -2,6 +2,10 @@
 name = "metacat-cli"
 version = "0.1.0"
 edition = "2024"
+description = "metacat: a categorical theorem prover"
+repository = "https://github.com/statusfailed/metacat"
+license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/metacat"
 
 [dependencies]
 hexpr = { workspace = true }

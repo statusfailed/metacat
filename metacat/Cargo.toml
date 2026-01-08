@@ -2,6 +2,10 @@
 name = "metacat"
 version = "0.1.0"
 edition = "2024"
+description = "metacat: a categorical theorem prover"
+repository = "https://github.com/statusfailed/metacat"
+documentation = "https://docs.rs/metacat"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 hexpr = { workspace = true }
