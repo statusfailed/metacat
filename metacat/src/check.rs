@@ -24,16 +24,18 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     f: OpenHypergraph<(), Dual<O>>,
 ) -> Result<Vec<Tree<(), O>>, EvalError> {
     // evaluation state
-    let mut state: Vec<Tree<(), O>> = (0..f.hypergraph.nodes.len())
-        .map(|i| Tree::Leaf(i, ()))
-        .collect();
+    let mut state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
 
     for ssa_value in ssa(f.to_strict())? {
         // Symbolic inputs to the op
         let source_values: Vec<Tree<(), O>> = ssa_value
             .sources
             .into_iter()
-            .map(|i| state[i.0.0].clone())
+            .map(|i| {
+                state[i.0.0]
+                    .clone()
+                    .unwrap_or_else(|| Tree::Leaf(i.0.0, ()))
+            })
             .collect();
 
         match ssa_value.op {
@@ -88,14 +90,18 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     }
 
     // Return final eval state
-    Ok(state)
+    Ok(state
+        .into_iter()
+        .enumerate()
+        .map(|(i, opt)| opt.unwrap_or_else(|| Tree::Leaf(i, ())))
+        .collect())
 }
 
-pub fn merge<O: Debug + Eq>(value: &mut Tree<(), O>, new: Tree<(), O>) -> Result<(), EvalError> {
-    // Overwrite a Leaf, but ensure other values are equal
+pub fn merge<O: Debug + Eq>(value: &mut Option<Tree<(), O>>, new: Tree<(), O>) -> Result<(), EvalError> {
+    // Overwrite None, but ensure other values are equal
     match value {
-        Tree::Leaf(_, _) => *value = new,
-        t => {
+        None => *value = Some(new),
+        Some(t) => {
             if *t != new {
                 return Err(EvalError::MergeError(
                     format!("{:?}", t),
