@@ -9,6 +9,7 @@ enum Format {
 
 use hexpr::*;
 use metacat::check::check;
+use metacat::theory::OperationKey;
 
 // CLI utils
 use clap::{Parser, Subcommand, ValueEnum};
@@ -149,13 +150,36 @@ fn arrow(path: PathBuf, name: String, format: Format) -> anyhow::Result<()> {
                 println!("{}", def_hexpr);
             }
             Format::Svg => {
+                // Render an SVG of the term. We try to compute types if possible, and fall back to
+                // unlabeled nodes if checking fails.
                 use open_hypergraphs_dot::{Options, svg::to_svg_with};
                 use std::io::Write;
+                let object_theory = bundle.object_theory;
                 let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
                 term.quotient();
+                let source = forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
+                let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
+
+                // Compute types for each node of the open hypergraph
+                let result = check(&bundle.arrow_theory, source, target, &mut term);
+
+                // Tell pretty-printer the coarity of each operation
+                let coarity =
+                    |op: &OperationKey| -> usize { object_theory.type_maps(op).1.targets.len() };
+
+                // Pretty-print computed type trees
+                let labels: Vec<String> = match result {
+                    Ok(types) => types.iter().map(|t| t.pretty(Some(&coarity))).collect(),
+                    Err(e) => {
+                        log::warn!("check failed: {e}");
+                        vec![String::new(); term.hypergraph.nodes.len()]
+                    }
+                };
+
+                // Write SVG out.
                 std::io::stdout().write_all(&to_svg_with(
-                    &term.clone().map_nodes(|_| ""),
-                    &Options::default().display().tb(),
+                    &term.with_nodes(|_| labels).expect("labels length mismatch"),
+                    &Options::default().display().lr(),
                 )?)?;
             }
         }
