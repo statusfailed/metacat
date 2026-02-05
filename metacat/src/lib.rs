@@ -4,6 +4,7 @@ pub mod ssa;
 pub mod tree;
 
 pub mod prop;
+pub mod syntax;
 pub mod theory;
 
 pub mod check;

@@ -1,6 +1,3 @@
-mod load;
-use load::TheoryBundle;
-
 #[derive(ValueEnum, Clone, Debug)]
 enum Format {
     Hexpr,
@@ -9,6 +6,7 @@ enum Format {
 
 use hexpr::*;
 use metacat::check::check;
+use metacat::syntax::TheoryBundle;
 use metacat::theory::OperationKey;
 
 // CLI utils

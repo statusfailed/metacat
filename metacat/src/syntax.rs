@@ -1,6 +1,20 @@
+//! A provisional definition of surface syntax for metacat
+//! Examples:
+//!
+//! ```hex
+//! # Declare a constant 'type-level' symbol
+//! (object true : 0 -> 1)
+//!
+//! # Declare a symbol with two metavariables
+//! (object implies : 2 -> 1)
+//!
+//! # Declare an arrow (read: axiom / primitive function)
+//! (arrow wi : {wff wff} -> (-> wff))
+//! ```
+use crate::prop::{Nat, PropObj};
+use crate::theory::{OperationKey, Theory};
+
 use hexpr::*;
-use metacat::prop::{Nat, PropObj};
-use metacat::theory::{OperationKey, Theory};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -9,9 +23,9 @@ pub enum LoadError {
     #[error("Invalid declaration: {0}")]
     InvalidDeclaration(Hexpr),
     #[error("Theory error: {0}")]
-    TheoryError(#[from] metacat::theory::Error),
+    TheoryError(#[from] crate::theory::Error),
     #[error("Hexpr conversion error: {0}")]
-    InterpretError(#[from] hexpr::interpret::Error<metacat::theory::Error>),
+    InterpretError(#[from] hexpr::interpret::Error<crate::theory::Error>),
     #[error("PropObj interpret error: {0}")]
     PropObjInterpretError(#[from] hexpr::interpret::Error<std::num::ParseIntError>),
     #[error("Parse error: {0}")]
@@ -133,12 +147,10 @@ impl Declaration {
 /// read object theory from declarations
 fn read_object_theory(declarations: &[Declaration]) -> Result<Theory<Nat>, LoadError> {
     let mut theory = Theory::new();
-    log::info!("reading object theory");
     for decl in declarations {
         if decl.theory.as_str() != "object" {
             continue;
         }
-        log::debug!("load {}", &decl.name);
         let source = forget_labels(try_interpret(&PropObj, &decl.source_map)?);
         let target = forget_labels(try_interpret(&PropObj, &decl.target_map)?);
         theory.add_operation(decl.name.clone(), source, target)?;
@@ -152,12 +164,10 @@ fn read_arrow_theory(
     declarations: &[Declaration],
 ) -> Result<Theory<OperationKey>, LoadError> {
     let mut theory = Theory::new();
-    log::info!("reading arrow theory");
     for decl in declarations {
         if decl.theory.as_str() != "arrow" && decl.theory.as_str() != "def-arrow" {
             continue;
         }
-        log::debug!("load {}", &decl.name);
         let source = forget_labels(try_interpret(object_theory, &decl.source_map)?);
         let target = forget_labels(try_interpret(object_theory, &decl.target_map)?);
         theory.add_operation(decl.name.clone(), source, target)?;
