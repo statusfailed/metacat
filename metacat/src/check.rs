@@ -185,7 +185,7 @@ pub fn to_type_map<O: Clone>(
     arrow: &OpenHypergraph<(), OperationKey>,
 ) -> OpenHypergraph<(), Dual<O>> {
     // The dualizer functor maps each generator in `arrow` into src†;tgt
-    let type_map = AsType(theory).map_arrow(&arrow);
+    let type_map = AsType(theory).map_arrow(arrow);
 
     // TODO: remove unwrap()
     let mut result = dual::into_fwd(source)

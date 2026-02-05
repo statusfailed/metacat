@@ -54,8 +54,10 @@ pub fn inline<K: Clone + Hash + Eq, O: Clone + PartialEq, A: Clone + PartialEq>(
     term: OpenHypergraph<O, Def<K, A>>,
 ) -> Option<OpenHypergraph<O, A>> {
     let result = Inline { env }.map_arrow(&term);
+
+    #[allow(clippy::manual_unwrap_or_default)]
     result.with_edges(|edges| match edges.into_iter().collect() {
         Some(e) => e,
-        None => vec![], // TODO: this is a naughty hack which nevertheless works
+        None => vec![], // Propagate error up- with_edges will fail if this is empty.
     })
 }

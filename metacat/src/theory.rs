@@ -15,7 +15,7 @@ impl std::fmt::Display for OperationKey {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Theory<A> {
     operations: HashMap<OperationKey, (ObjTerm<A>, ObjTerm<A>)>,
 }
@@ -40,7 +40,7 @@ impl<A> Theory<A> {
     }
 
     pub fn type_maps(&self, op: &OperationKey) -> &(OpenHypergraph<(), A>, OpenHypergraph<(), A>) {
-        &self.operations[&op]
+        &self.operations[op]
     }
 }
 

@@ -63,6 +63,7 @@ fn main() -> anyhow::Result<()> {
 
     env_logger::Builder::new()
         .filter_level(log_level)
+        .parse_default_env()
         .write_style(if cli.color {
             env_logger::WriteStyle::Always
         } else {
@@ -88,11 +89,11 @@ fn check_file(path: PathBuf) -> anyhow::Result<()> {
 
     log::info!("checking definitions");
 
-    for (_operation, declaration) in &definitions {
+    for (operation, declaration) in &definitions {
         let def_hexpr = declaration.definition.as_ref().unwrap(); // Safe because we only store definitions with Some(hexpr)
         log::info!(
             "checking definition {} : {} -> {} = {}",
-            declaration.name,
+            operation,
             declaration.source_map,
             declaration.target_map,
             def_hexpr

@@ -48,7 +48,7 @@ impl TheoryBundle {
             .into_iter()
             .map(|hexpr| {
                 Declaration::try_from_hexpr(hexpr.clone())
-                    .ok_or_else(|| LoadError::InvalidDeclaration(hexpr))
+                    .ok_or(LoadError::InvalidDeclaration(hexpr))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
