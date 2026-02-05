@@ -20,9 +20,17 @@ impl<Leaf, Node: std::fmt::Display> Tree<Leaf, Node> {
                     2 => {
                         let op_str = format!("{op}");
                         if op_str.starts_with(|c: char| c.is_alphanumeric()) {
-                            format!("{op}({}, {})", children[0].pretty(coarity), children[1].pretty(coarity))
+                            format!(
+                                "{op}({}, {})",
+                                children[0].pretty(coarity),
+                                children[1].pretty(coarity)
+                            )
                         } else {
-                            format!("({} {op} {})", children[0].pretty(coarity), children[1].pretty(coarity))
+                            format!(
+                                "({} {op} {})",
+                                children[0].pretty(coarity),
+                                children[1].pretty(coarity)
+                            )
                         }
                     }
                     _ => {

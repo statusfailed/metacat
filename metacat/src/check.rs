@@ -10,9 +10,24 @@ use crate::tree::*;
 use crate::{dual, dual::Dual};
 
 #[derive(Debug, Error)]
-pub enum EvalError {
+pub enum Error<O> {
     #[error("SSA decomposition failed")]
     SSAError(#[from] SSAError),
+    #[error("Type maps had invalid arity/coarity")]
+    InvalidTypeMaps,
+    #[error("Error during type map evaluation")]
+    PartialResult(#[from] PartialResult<O>),
+}
+
+#[derive(Debug, Error)]
+pub struct PartialResult<O> {
+    pub partial_result: Vec<Option<Tree<(), O>>>,
+    pub cause: EvalError,
+}
+
+// TODO: include location info (NodeId)
+#[derive(Debug, Error)]
+pub enum EvalError {
     #[error("Could not merge values {0} and {1}")]
     MergeError(String, String),
     #[error("Could not pop symbol {1} of {0:?}")]
@@ -25,7 +40,7 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     source: OpenHypergraph<(), O>,
     target: OpenHypergraph<(), O>,
     arrow: &mut OpenHypergraph<(), OperationKey>,
-) -> Result<Vec<Tree<(), O>>, EvalError> {
+) -> Result<Vec<Tree<(), O>>, Error<O>> {
     let mut fwd = dual::into_fwd(source);
     let mut rev = dual::into_rev(target);
     fwd.quotient();
@@ -36,9 +51,8 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     let type_map = AsType(theory).map_arrow(arrow);
 
     // Compose together laxly
-    let Some(mut type_term) = fwd.lax_compose(&type_map).and_then(|f| f.lax_compose(&rev)) else {
-        todo!("??? programmer error ???");
-    };
+    let composite = fwd.lax_compose(&type_map).and_then(|f| f.lax_compose(&rev));
+    let mut type_term = composite.ok_or(Error::<O>::InvalidTypeMaps)?;
 
     // quotient and keep the quotient map
     let q = type_term.quotient_witness();
@@ -56,7 +70,7 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
 /// Evaluate a type map
 pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     f: OpenHypergraph<(), Dual<O>>,
-) -> Result<Vec<Tree<(), O>>, EvalError> {
+) -> Result<Vec<Tree<(), O>>, Error<O>> {
     // evaluation state
     let mut state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
 
@@ -81,7 +95,11 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
                     merge(
                         &mut state[node_id.0.0],
                         Tree::Node(arr.clone(), i, source_values.clone()),
-                    )?
+                    )
+                    .map_err(|cause| PartialResult {
+                        cause,
+                        partial_result: state.clone(),
+                    })?;
                 }
             }
 
@@ -97,18 +115,23 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
                                 None => Some(node_children),
                                 Some(children) if children == node_children => Some(children),
                                 _ => {
-                                    return Err(EvalError::MatchError(
-                                        ssa_value.edge_id,
-                                        format!("{op:?} (children didn't match)"),
-                                    ));
+                                    return Err(PartialResult {
+                                        partial_result: state,
+                                        cause: EvalError::MatchError(
+                                            ssa_value.edge_id,
+                                            format!("{op:?} (children didn't match)"),
+                                        ),
+                                    }
+                                    .into());
                                 }
                             }
                         }
                         _ => {
-                            return Err(EvalError::MatchError(
-                                ssa_value.edge_id,
-                                format!("{op:?}"),
-                            ));
+                            return Err(PartialResult {
+                                partial_result: state,
+                                cause: EvalError::MatchError(ssa_value.edge_id, format!("{op:?}")),
+                            }
+                            .into());
                         }
                     }
                 }
@@ -117,7 +140,10 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
                 let children =
                     children.unwrap_or_else(|| vec![Tree::Empty; ssa_value.targets.len()]);
                 for (node_id, child) in ssa_value.targets.iter().zip(children.into_iter()) {
-                    merge(&mut state[node_id.0.0], child)?;
+                    merge(&mut state[node_id.0.0], child).map_err(|cause| PartialResult {
+                        cause,
+                        partial_result: state.clone(),
+                    })?;
                 }
             }
         };
