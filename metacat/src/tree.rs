@@ -8,24 +8,45 @@ pub enum Tree<Leaf, Node> {
     Node(Node, usize, Vec<Tree<Leaf, Node>>),
 }
 
-// TODO: this should really require Display instances instead of Debug;
-// we use it because otherwise we can't have DIsplay for Tree without ().
-// FIX: use custom "Unit" type instead of ()?
-impl<Leaf: std::fmt::Debug, Node: std::fmt::Debug> std::fmt::Display for Tree<Leaf, Node> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<Leaf, Node: std::fmt::Display> Tree<Leaf, Node> {
+    pub fn pretty(&self, coarity: Option<&dyn Fn(&Node) -> usize>) -> String {
         match self {
-            Tree::Empty => write!(f, "empty"),
-            Tree::Leaf(i, _label) => write!(f, "x{i}"),
-            Tree::Node(lbl, target_idx, children) => {
-                write!(f, "{:?}(", lbl)?;
-                for (i, child) in children.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
+            Tree::Empty => "empty".to_string(),
+            Tree::Leaf(i, _) => format!("x{i}"),
+            Tree::Node(op, target_idx, children) => {
+                let inner = match children.len() {
+                    0 => format!("{op}"),
+                    1 => format!("{op}({})", children[0].pretty(coarity)),
+                    2 => {
+                        let op_str = format!("{op}");
+                        if op_str.starts_with(|c: char| c.is_alphanumeric()) {
+                            format!("{op}({}, {})", children[0].pretty(coarity), children[1].pretty(coarity))
+                        } else {
+                            format!("({} {op} {})", children[0].pretty(coarity), children[1].pretty(coarity))
+                        }
                     }
-                    write!(f, "{}", child)?;
+                    _ => {
+                        let args: Vec<String> =
+                            children.iter().map(|c| c.pretty(coarity)).collect();
+                        format!("{op}({})", args.join(", "))
+                    }
+                };
+                let show_proj = match coarity {
+                    Some(f) => f(op) > 1,
+                    None => true,
+                };
+                if show_proj {
+                    format!("π{target_idx}({inner})")
+                } else {
+                    inner
                 }
-                write!(f, ")_{}", target_idx)
             }
         }
+    }
+}
+
+impl<Leaf, Node: std::fmt::Display> std::fmt::Display for Tree<Leaf, Node> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.pretty(None))
     }
 }

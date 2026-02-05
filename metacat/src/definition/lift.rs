@@ -2,7 +2,7 @@
 
 use open_hypergraphs::lax::{
     OpenHypergraph,
-    functor::{Functor, define_map_arrow},
+    functor::{Functor, try_define_map_arrow},
 };
 
 pub use super::types::*;
@@ -39,7 +39,7 @@ impl<F: Functor<O, A1, O, A2> + Clone, K: Clone, O: Clone + PartialEq, A1: Clone
     }
 
     fn map_arrow(&self, f: &OpenHypergraph<O, Def<K, A1>>) -> OpenHypergraph<O, Def<K, A2>> {
-        define_map_arrow(self, f)
+        try_define_map_arrow(self, f).unwrap()
     }
 }
 

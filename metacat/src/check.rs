@@ -19,6 +19,40 @@ pub enum EvalError {
     MatchError(EdgeId, String),
 }
 
+/// Typecheck a term, returning an assignment of "types" to each of its nodes
+pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
+    theory: &Theory<O>, // *arrow* theory
+    source: OpenHypergraph<(), O>,
+    target: OpenHypergraph<(), O>,
+    arrow: &mut OpenHypergraph<(), OperationKey>,
+) -> Result<Vec<Tree<(), O>>, EvalError> {
+    let mut fwd = dual::into_fwd(source);
+    let mut rev = dual::into_rev(target);
+    fwd.quotient();
+    rev.quotient();
+    arrow.quotient();
+
+    // Compute the type map and witness, telling us *where the type map is*
+    let type_map = AsType(theory).map_arrow(arrow);
+
+    // Compose together laxly
+    let Some(mut type_term) = fwd.lax_compose(&type_map).and_then(|f| f.lax_compose(&rev)) else {
+        todo!("??? programmer error ???");
+    };
+
+    // quotient and keep the quotient map
+    let q = type_term.quotient_witness();
+
+    // Fetch subset of nodes corresponding to type_map nodes
+    // NOTE: we rely on the type functor preserving the size of objects
+    let offset = fwd.hypergraph.nodes.len();
+    let size = arrow.hypergraph.nodes.len();
+    let indices = (offset..offset + size).map(|i| q.table[i]);
+
+    let results = eval_type(type_term)?;
+    Ok(indices.map(|i| results[i].clone()).collect())
+}
+
 /// Evaluate a type map
 pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     f: OpenHypergraph<(), Dual<O>>,
@@ -97,7 +131,10 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
         .collect())
 }
 
-pub fn merge<O: Debug + Eq>(value: &mut Option<Tree<(), O>>, new: Tree<(), O>) -> Result<(), EvalError> {
+pub fn merge<O: Debug + Eq>(
+    value: &mut Option<Tree<(), O>>,
+    new: Tree<(), O>,
+) -> Result<(), EvalError> {
     // Overwrite None, but ensure other values are equal
     match value {
         None => *value = Some(new),
@@ -116,7 +153,7 @@ pub fn merge<O: Debug + Eq>(value: &mut Option<Tree<(), O>>, new: Tree<(), O>) -
 
 /// Compute the type map of a given term
 pub fn to_type_map<O: Clone>(
-    theory: Theory<O>,
+    theory: &Theory<O>,
     source: OpenHypergraph<(), O>,
     target: OpenHypergraph<(), O>,
     arrow: &OpenHypergraph<(), OperationKey>,
@@ -136,12 +173,11 @@ pub fn to_type_map<O: Clone>(
 }
 
 /// Map generating arrows of a Theory into the composites `(src† ; tgt)`
-// TODO: remove Clone; currently required unnecessarily by open hypergraphs functor impl
 #[derive(Clone)]
-pub struct AsType<O>(pub Theory<O>);
+struct AsType<'a, O>(pub &'a Theory<O>);
 
 // wi, wn both are OperationKey
-impl<O: Clone> Functor<(), OperationKey, (), Dual<O>> for AsType<O> {
+impl<O: Clone> Functor<(), OperationKey, (), Dual<O>> for AsType<'_, O> {
     fn map_object(&self, _: &()) -> impl ExactSizeIterator<Item = ()> {
         vec![()].into_iter()
     }
@@ -164,6 +200,6 @@ impl<O: Clone> Functor<(), OperationKey, (), Dual<O>> for AsType<O> {
     }
 
     fn map_arrow(&self, f: &OpenHypergraph<(), OperationKey>) -> OpenHypergraph<(), Dual<O>> {
-        functor::define_map_arrow(self, f)
+        functor::try_define_map_arrow(self, f).unwrap()
     }
 }

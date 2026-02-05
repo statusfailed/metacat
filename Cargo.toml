@@ -4,5 +4,5 @@ resolver = "2"
 
 [workspace.dependencies]
 hexpr = "0.2.0"
-open-hypergraphs = "0.2.9"
+open-hypergraphs = "0.2.10"
 thiserror = "2.0.17"

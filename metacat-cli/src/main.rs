@@ -8,8 +8,7 @@ enum Format {
 }
 
 use hexpr::*;
-use metacat::check::eval_type;
-use metacat::check::to_type_map;
+use metacat::check::check;
 
 // CLI utils
 use clap::{Parser, Subcommand, ValueEnum};
@@ -72,14 +71,14 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Command::Check { path } => check(path),
+        Command::Check { path } => check_file(path),
         Command::Arrow { path, name, format } => arrow(path, name, format),
     }
 }
 
 /// Read a file of `Declaration`s into object and arrow theories,
 /// then check all definitions.
-fn check(path: PathBuf) -> anyhow::Result<()> {
+fn check_file(path: PathBuf) -> anyhow::Result<()> {
     let TheoryBundle {
         object_theory,
         arrow_theory,
@@ -100,17 +99,15 @@ fn check(path: PathBuf) -> anyhow::Result<()> {
         );
 
         // NOTE: we use forget_labels instead of unify, since we have a single-sorted theory.
-        let term = forget_labels(try_interpret(&arrow_theory, def_hexpr)?);
+        let mut term = forget_labels(try_interpret(&arrow_theory, def_hexpr)?);
         let source = forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
         let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
 
-        let type_term = to_type_map(arrow_theory.clone(), source, target, &term);
-
-        let result = eval_type(type_term);
-        log::debug!("eval_type: {:?}", result);
+        let result = check(&arrow_theory, source, target, &mut term);
+        log::debug!("check: {:?}", result);
 
         match result {
-            Ok(_) => {
+            Ok(_types) => {
                 println!(
                     "{} {} : {} -> {}",
                     "[✓]".green(),
