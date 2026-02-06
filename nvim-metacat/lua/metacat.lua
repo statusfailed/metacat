@@ -30,14 +30,6 @@ function M.render()
     state.svg_path = vim.fn.tempname() .. ".svg"
   end
 
-  if not state.viewer_job then
-    state.viewer_job = vim.fn.jobstart({ "svgtail", state.svg_path }, {
-      on_exit = function()
-        state.viewer_job = nil
-      end,
-    })
-  end
-
   local bufpath = vim.api.nvim_buf_get_name(0)
   local stdout_chunks = {}
   local stderr_chunks = {}
@@ -69,6 +61,15 @@ function M.render()
           if f then
             f:write(table.concat(stdout_chunks, "\n"))
             f:close()
+          end
+
+          -- Start the viewer if it's not already running
+          if not state.viewer_job then
+            state.viewer_job = vim.fn.jobstart({ "svgtail", state.svg_path }, {
+              on_exit = function()
+                state.viewer_job = nil
+              end,
+            })
           end
         end
       end)
