@@ -57,3 +57,19 @@ We can then write a simple proof that negation of implication is also well-forme
 
 See [./fol.hex](./fol.hex) for an example of declaring axioms of propositional logic,
 and using them to prove the identity theorem `|- (φ → φ)`.
+
+# nvim-metacat
+
+Use the `nvim-metacat` plugin in this repo to render diagrams of `def-arrow` terms from nvim.
+To configure using [Lazy.nvim](https://github.com/folke/lazy.nvim), add this to `plugins.lua`:
+
+    {
+      "statusfailed/metacat/nvim-metacat",
+      opts = {
+        viewer = { "feh", "--reload", "1" },
+      },
+    },
+
+You can then bind the `render` method to a key, e.g. F6 by adding the following to `init.lua`:
+
+    vim.keymap.set("n", "<F6>", require("metacat").render, { desc = "Metacat: render def-arrow as SVG" })

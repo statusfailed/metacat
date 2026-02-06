@@ -1,9 +1,18 @@
 local M = {}
 
+local config = {
+  viewer = nil,
+}
+
 local state = {
   svg_path = nil,
   viewer_job = nil,
 }
+
+function M.setup(opts)
+  opts = opts or {}
+  config.viewer = opts.viewer
+end
 
 local function find_def_arrow()
   local row = vim.api.nvim_win_get_cursor(0)[1]
@@ -18,6 +27,11 @@ local function find_def_arrow()
 end
 
 function M.render()
+  if not config.viewer then
+    vim.notify("metacat: 'viewer' not configured", vim.log.levels.ERROR)
+    return
+  end
+
   vim.cmd("silent write")
 
   local name = find_def_arrow()
@@ -64,8 +78,10 @@ function M.render()
           end
 
           -- Start the viewer if it's not already running
-          if not state.viewer_job then
-            state.viewer_job = vim.fn.jobstart({ "svgtail", state.svg_path }, {
+          if not state.viewer_job and config.viewer then
+            local cmd = vim.list_extend({}, config.viewer)
+            table.insert(cmd, state.svg_path)
+            state.viewer_job = vim.fn.jobstart(cmd, {
               on_exit = function()
                 state.viewer_job = nil
               end,
