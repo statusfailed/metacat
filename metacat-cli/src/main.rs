@@ -1,7 +1,7 @@
 #[derive(ValueEnum, Clone, Debug)]
-enum Format {
-    Hexpr,
-    Svg,
+enum Orientation {
+    LR,
+    TB,
 }
 
 use hexpr::*;
@@ -35,12 +35,26 @@ enum Command {
         path: PathBuf,
     },
     Arrow {
+        #[command(subcommand)]
+        format: ArrowFormat,
+    },
+}
+
+#[derive(Subcommand)]
+enum ArrowFormat {
+    Hexpr {
         #[arg()]
         path: PathBuf,
         #[arg()]
         name: String,
-        #[arg(short, long, value_enum, default_value_t = Format::Hexpr)]
-        format: Format,
+    },
+    Svg {
+        #[arg()]
+        path: PathBuf,
+        #[arg()]
+        name: String,
+        #[arg(short, long, value_enum, default_value_t = Orientation::LR)]
+        orientation: Orientation,
     },
 }
 
@@ -72,7 +86,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Check { path } => check_file(path),
-        Command::Arrow { path, name, format } => arrow(path, name, format),
+        Command::Arrow { format } => arrow(format),
     }
 }
 
@@ -133,7 +147,13 @@ fn check_file(path: PathBuf) -> anyhow::Result<()> {
 }
 
 /// Load theories from a file and print the hexpr for a given arrow name
-fn arrow(path: PathBuf, name: String, format: Format) -> anyhow::Result<()> {
+fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
+    let (path, name) = match &format {
+        ArrowFormat::Hexpr { path, name } | ArrowFormat::Svg { path, name, .. } => {
+            (path.clone(), name.clone())
+        }
+    };
+
     log::info!("Loading theories to find arrow: {}", name);
     let bundle = TheoryBundle::from_file(path)?;
 
@@ -144,10 +164,10 @@ fn arrow(path: PathBuf, name: String, format: Format) -> anyhow::Result<()> {
     if let Some(declaration) = bundle.definitions.get(operation) {
         let def_hexpr = declaration.definition.as_ref().unwrap(); // Safe because we only store definitions with Some(hexpr)
         match format {
-            Format::Hexpr => {
+            ArrowFormat::Hexpr { .. } => {
                 println!("{}", def_hexpr);
             }
-            Format::Svg => {
+            ArrowFormat::Svg { orientation, .. } => {
                 // Render an SVG of the term. We try to compute types if possible, and fall back to
                 // unlabeled nodes if checking fails.
                 use open_hypergraphs_dot::{Options, svg::to_svg_with};
@@ -174,10 +194,15 @@ fn arrow(path: PathBuf, name: String, format: Format) -> anyhow::Result<()> {
                     }
                 };
 
-                // Write SVG out.
+                let mut opts = Options::default().display();
+                opts.orientation = match orientation {
+                    Orientation::LR => open_hypergraphs_dot::Orientation::LR,
+                    Orientation::TB => open_hypergraphs_dot::Orientation::TB,
+                };
+
                 std::io::stdout().write_all(&to_svg_with(
                     &term.with_nodes(|_| labels).expect("labels length mismatch"),
-                    &Options::default().display().lr(),
+                    &opts,
                 )?)?;
             }
         }
