@@ -11,7 +11,7 @@ documentation = "https://docs.rs/metacat"
 hexpr = { workspace = true }
 open-hypergraphs = { workspace = true }
 thiserror = { workspace = true }
-metacat = { version = "0.1", path = "../metacat" }
+metacat = { version = "0.1.2", path = "../metacat" }
 
 anyhow = "1.0.100"
 clap = { version = "4.5.54", features = ["derive"] }
