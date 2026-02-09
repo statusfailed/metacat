@@ -15,8 +15,9 @@ use colored::*;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "metacat-cli")]
+#[command(name = "metacat-cli", version=env!("CARGO_PKG_VERSION"),)]
 #[command(about = "A tool for checking categorical definitions")]
+#[command(version = env!("CARGO_PKG_VERSION"),)]
 struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
