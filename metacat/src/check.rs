@@ -15,7 +15,7 @@ pub enum Error<O> {
     SSAError(#[from] SSAError),
     #[error("Type maps had invalid arity/coarity")]
     InvalidTypeMaps,
-    #[error("Error during type map evaluation")]
+    #[error("Error during type map evaluation {0:?}")]
     PartialResult(#[from] PartialResult<O>),
 }
 
@@ -41,6 +41,8 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     target: OpenHypergraph<(), O>,
     arrow: &mut OpenHypergraph<(), OperationKey>,
 ) -> Result<Vec<Tree<(), O>>, Error<O>> {
+    //////////////////////////////////////////
+    // Compute the *type map* `source ; arrow.s† ; arrow.t ; target†`
     let mut fwd = dual::into_fwd(source);
     let mut rev = dual::into_rev(target);
     fwd.quotient();
@@ -51,8 +53,13 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     let type_map = AsType(theory).map_arrow(arrow);
 
     // Compose together laxly
-    let composite = fwd.lax_compose(&type_map).and_then(|f| f.lax_compose(&rev));
-    let mut type_term = composite.ok_or(Error::<O>::InvalidTypeMaps)?;
+    let mut type_term = fwd
+        .lax_compose(&type_map)
+        .and_then(|f| f.lax_compose(&rev))
+        .ok_or(Error::<O>::InvalidTypeMaps)?;
+
+    //////////////////////////////////////////
+    // Compute types, then select only those from nodes corresponding to nodes in the original term
 
     // quotient and keep the quotient map
     let q = type_term.quotient_witness();
@@ -71,9 +78,15 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
 pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     f: OpenHypergraph<(), Dual<O>>,
 ) -> Result<Vec<Tree<(), O>>, Error<O>> {
-    // evaluation state
-    let mut state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
+    // evaluation state initialized all to None, so that source `s` becomes `Leaf s`
+    let state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
+    eval_type_with(f, state)
+}
 
+pub fn eval_type_with<O: Clone + Eq + Debug + std::fmt::Display>(
+    f: OpenHypergraph<(), Dual<O>>,
+    mut state: Vec<Option<Tree<(), O>>>,
+) -> Result<Vec<Tree<(), O>>, Error<O>> {
     for ssa_value in ssa(f.to_strict())? {
         // Symbolic inputs to the op
         let source_values: Vec<Tree<(), O>> = ssa_value
@@ -175,27 +188,6 @@ pub fn merge<O: Debug + Eq>(
     }
 
     Ok(())
-}
-
-/// Compute the type map of a given term
-pub fn to_type_map<O: Clone>(
-    theory: &Theory<O>,
-    source: OpenHypergraph<(), O>,
-    target: OpenHypergraph<(), O>,
-    arrow: &OpenHypergraph<(), OperationKey>,
-) -> OpenHypergraph<(), Dual<O>> {
-    // The dualizer functor maps each generator in `arrow` into src†;tgt
-    let type_map = AsType(theory).map_arrow(arrow);
-
-    // TODO: remove unwrap()
-    let mut result = dual::into_fwd(source)
-        .compose(&type_map)
-        .unwrap()
-        .compose(&dual::into_rev(target))
-        .unwrap();
-
-    result.quotient();
-    result
 }
 
 /// Map generating arrows of a Theory into the composites `(src† ; tgt)`
