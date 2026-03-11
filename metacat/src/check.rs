@@ -1,5 +1,6 @@
 use open_hypergraphs::lax::functor::Functor;
 use open_hypergraphs::lax::*;
+use open_hypergraphs::strict::vec::FiniteFunction;
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -17,6 +18,8 @@ pub enum Error<O> {
     InvalidTypeMaps,
     #[error("Error during type map evaluation {0:?}")]
     PartialResult(#[from] PartialResult<O>),
+    #[error("Unable to quotient type map {0:?}")]
+    InvalidQuotient(FiniteFunction),
 }
 
 #[derive(Debug, Error)]
@@ -45,9 +48,9 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     // Compute the *type map* `source ; arrow.s† ; arrow.t ; target†`
     let mut fwd = dual::into_fwd(source);
     let mut rev = dual::into_rev(target);
-    fwd.quotient();
-    rev.quotient();
-    arrow.quotient();
+    fwd.quotient().map_err(Error::InvalidQuotient)?;
+    rev.quotient().map_err(Error::InvalidQuotient)?;
+    arrow.quotient().map_err(Error::InvalidQuotient)?;
 
     // Compute the type map and witness, telling us *where the type map is*
     let type_map = AsType(theory).map_arrow(arrow);
@@ -62,7 +65,7 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     // Compute types, then select only those from nodes corresponding to nodes in the original term
 
     // quotient and keep the quotient map
-    let q = type_term.quotient_witness();
+    let q = type_term.quotient().map_err(Error::InvalidQuotient)?;
 
     // Fetch subset of nodes corresponding to type_map nodes
     // NOTE: we rely on the type functor preserving the size of objects

@@ -8,11 +8,23 @@ use hexpr::*;
 use metacat::check::check;
 use metacat::syntax::TheoryBundle;
 use metacat::theory::OperationKey;
+use open_hypergraphs::strict::vec::FiniteFunction;
+
+use thiserror::Error;
 
 // CLI utils
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::*;
 use std::path::PathBuf;
+
+#[derive(Debug, Error)]
+pub struct QuotientError(FiniteFunction);
+
+impl std::fmt::Display for QuotientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "metacat-cli", version=env!("CARGO_PKG_VERSION"),)]
@@ -175,7 +187,7 @@ fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
                 use std::io::Write;
                 let object_theory = bundle.object_theory;
                 let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
-                term.quotient();
+                term.quotient().map_err(QuotientError)?;
                 let source = forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
                 let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
 
