@@ -5,7 +5,8 @@ use std::collections::HashMap;
 
 pub type ObjTerm<A> = OpenHypergraph<(), A>;
 
-// NOTE: Operation must not be made public; user cannot construct this!
+/// The unique name of an operation in a theory.
+// NOTE: OperationKey must not be made public; user cannot construct this!
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OperationKey(Operation);
 
@@ -15,6 +16,8 @@ impl std::fmt::Display for OperationKey {
     }
 }
 
+/// A [`Theory`] is a collection of operations identified by a unique [`OperationKey`], along with
+/// a source/target arrow.
 #[derive(Clone, Default)]
 pub struct Theory<A> {
     operations: HashMap<OperationKey, (ObjTerm<A>, ObjTerm<A>)>,
@@ -33,6 +36,14 @@ impl<A> Theory<A> {
         Self {
             operations: HashMap::new(),
         }
+    }
+
+    pub fn get_operation_key(&self, key: &str) -> Option<OperationKey> {
+        let op: Operation = key.parse().ok()?;
+        let lookup = OperationKey(op);
+        self.operations
+            .get_key_value(&lookup)
+            .map(|(operation_key, _)| operation_key.clone())
     }
 
     pub fn operations(&self) -> impl Iterator<Item = &OperationKey> {
