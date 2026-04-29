@@ -40,11 +40,13 @@ pub struct TheoryBundle {
     pub arrow_theory: Theory<OperationKey>, // contains the types of both arrows *and* defined arrows
     // def-arrow maps have their bodies (rhs of =) here.
     pub definitions: HashMap<Operation, Declaration>,
+    pub declarations: Vec<Declaration>,
 }
 
 /// A declaration is matched from hexprs of the form
 /// `(<theory> <name> : <src> -> <target> = <definition>)`
 /// where the `= <definition>` part is optional.
+#[derive(Clone)]
 pub struct Declaration {
     pub theory: Operation,
     pub name: Operation,
@@ -75,9 +77,9 @@ impl TheoryBundle {
 
         // Collect definitions
         let mut definitions = HashMap::new();
-        for decl in decls {
+        for decl in &decls {
             if decl.definition.is_some() && decl.theory.as_str() == "def-arrow" {
-                definitions.insert(decl.name.clone(), decl);
+                definitions.insert(decl.name.clone(), decl.clone());
             }
         }
 
@@ -85,6 +87,7 @@ impl TheoryBundle {
             object_theory,
             arrow_theory,
             definitions,
+            declarations: decls,
         })
     }
 

@@ -85,7 +85,7 @@ pub fn ssa<O: Clone, A: Clone>(
     parallel_ssa(f).map(|v| v.into_iter().flatten().collect())
 }
 
-impl<O: Debug, A: Debug> Display for SSA<O, A> {
+impl<O: Debug, A: Display> Display for SSA<O, A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print targets
         let target_strs: Vec<String> = self
@@ -103,7 +103,7 @@ impl<O: Debug, A: Debug> Display for SSA<O, A> {
 
         write!(
             f,
-            "{}:\t{} = {:?}({})",
+            "{}:\t{} = {}({})",
             self.edge_id.0,
             target_strs.join(", "),
             self.op,
