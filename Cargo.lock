@@ -451,6 +451,7 @@ dependencies = [
  "clap",
  "colored",
  "env_logger",
+ "graphviz-rust",
  "hexpr",
  "log",
  "metacat",

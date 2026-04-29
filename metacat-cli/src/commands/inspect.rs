@@ -1,4 +1,4 @@
-use crate::render::{print_open_hypergraph, print_state};
+use crate::render::{print_dot_hypergraph, print_open_hypergraph, print_state};
 use crate::util::{find_definition, forget_labels};
 
 use clap::{Args, Subcommand, ValueEnum};
@@ -27,6 +27,8 @@ enum InspectTarget {
         name: String,
         #[arg(long, value_enum)]
         stage: InspectArrowStage,
+        #[arg(long, value_enum, default_value_t = InspectFormat::Text)]
+        format: InspectFormat,
     },
     Check {
         #[arg()]
@@ -45,11 +47,22 @@ enum InspectArrowStage {
     Ssa,
 }
 
+#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
+enum InspectFormat {
+    Text,
+    Dot,
+}
+
 impl InspectCommand {
     pub fn run(self) -> anyhow::Result<()> {
         match self.target {
             InspectTarget::Declarations { path } => inspect_declarations(path),
-            InspectTarget::Arrow { path, name, stage } => inspect_arrow(path, name, stage),
+            InspectTarget::Arrow {
+                path,
+                name,
+                stage,
+                format,
+            } => inspect_arrow(path, name, stage, format),
             InspectTarget::Check { path, name, trace } => inspect_check(path, name, trace),
         }
     }
@@ -88,23 +101,35 @@ fn print_declaration_group(title: &str, declarations: &[Declaration], theory: &s
     }
 }
 
-fn inspect_arrow(path: PathBuf, name: String, stage: InspectArrowStage) -> anyhow::Result<()> {
+fn inspect_arrow(
+    path: PathBuf,
+    name: String,
+    stage: InspectArrowStage,
+    format: InspectFormat,
+) -> anyhow::Result<()> {
     let bundle = TheoryBundle::from_file(path)?;
     let declaration = find_definition(&bundle, &name)?;
     let def_hexpr = declaration.definition.as_ref().unwrap();
     let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
 
-    println!(
-        "{} : {} -> {}",
-        declaration.name, declaration.source_map, declaration.target_map
-    );
-    println!("body: {def_hexpr}");
+    if format == InspectFormat::Text {
+        println!(
+            "{} : {} -> {}",
+            declaration.name, declaration.source_map, declaration.target_map
+        );
+        println!("body: {def_hexpr}");
+    }
 
     match stage {
         InspectArrowStage::Term => {
-            println!();
-            println!("term:");
-            print_open_hypergraph(&term);
+            match format {
+                InspectFormat::Text => {
+                    println!();
+                    println!("term:");
+                    print_open_hypergraph(&term);
+                }
+                InspectFormat::Dot => print_dot_hypergraph(&term),
+            }
         }
         InspectArrowStage::TypeMap => {
             let source =
@@ -114,13 +139,24 @@ fn inspect_arrow(path: PathBuf, name: String, stage: InspectArrowStage) -> anyho
             let (type_map, quotient, node_type_indices) =
                 type_term(&bundle.arrow_theory, source, target, &mut term)?;
 
-            println!();
-            println!("type-map:");
-            println!("  quotient: {:?}", quotient);
-            println!("  proof node type indices: {:?}", node_type_indices);
-            print_open_hypergraph(&type_map);
+            match format {
+                InspectFormat::Text => {
+                    println!();
+                    println!("type-map:");
+                    println!("  quotient: {:?}", quotient);
+                    println!("  proof node type indices: {:?}", node_type_indices);
+                    print_open_hypergraph(&type_map);
+                }
+                InspectFormat::Dot => print_dot_hypergraph(&type_map),
+            }
         }
         InspectArrowStage::Ssa => {
+            if format == InspectFormat::Dot {
+                return Err(anyhow::anyhow!(
+                    "--format dot is only available for --stage term and --stage type-map"
+                ));
+            }
+
             let source =
                 forget_labels(try_interpret(&bundle.object_theory, &declaration.source_map)?);
             let target =

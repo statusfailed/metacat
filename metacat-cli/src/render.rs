@@ -1,6 +1,22 @@
 use metacat::theory::OperationKey;
 use open_hypergraphs::lax::OpenHypergraph;
 
+pub fn print_dot_hypergraph<O, A>(f: &OpenHypergraph<O, A>)
+where
+    O: Clone + PartialEq + std::fmt::Debug,
+    A: Clone + PartialEq + std::fmt::Display + std::fmt::Debug,
+{
+    use graphviz_rust::printer::{DotPrinter, PrinterContext};
+    use open_hypergraphs_dot::{Options, generate_dot_with};
+
+    let mut opts = Options::default();
+    opts.edge_label = Box::new(|edge| format!("{edge}"));
+
+    let graph = generate_dot_with(f, &opts);
+    let mut ctx = PrinterContext::default();
+    println!("{}", graph.print(&mut ctx));
+}
+
 pub fn print_open_hypergraph<O: std::fmt::Debug, A: std::fmt::Display>(
     f: &OpenHypergraph<O, A>,
 ) {
