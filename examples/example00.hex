@@ -9,3 +9,11 @@
     ([.x y] add-gate)
   }
 )
+
+(def-arrow circuit2 : [x y] -> ([x y] add [z.x y z]) =
+  {[x y.]
+    [.x]
+    [.y]
+    ([.x y] add-gate)
+  }
+)
