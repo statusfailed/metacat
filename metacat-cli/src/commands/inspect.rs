@@ -1,11 +1,12 @@
 use crate::render::{
-    print_dot_hypergraph, print_dot_raw_type_map, print_open_hypergraph, print_state,
+    print_dot_hypergraph, print_dot_hypergraph_with_edge_labels, print_dot_raw_type_map,
+    print_open_hypergraph, print_state,
 };
-use crate::util::{find_arrow_declaration, find_definition, forget_labels};
+use crate::util::{find_arrow_declaration, find_definition, forget_labels, inline_definitions};
 
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
-use metacat::check::{check, check_trace, eval_type, raw_type_term, type_term};
+use metacat::check::{check, check_trace, eval_type, proof_type_map, raw_type_term, type_term};
 use metacat::dual;
 use metacat::dual::Dual;
 use metacat::syntax::{Declaration, TheoryBundle};
@@ -50,6 +51,10 @@ enum InspectArrowStage {
     Term,
     RawTypeMap,
     TypeMap,
+    TypeTerm,
+    ExpandedTypeTerm,
+    ProofTypeMap,
+    ExpandedTypeMap,
     Ssa,
 }
 
@@ -57,6 +62,7 @@ enum InspectArrowStage {
 enum InspectFormat {
     Text,
     Dot,
+    Formula,
 }
 
 impl InspectCommand {
@@ -142,6 +148,11 @@ fn inspect_arrow(
                 let labels = term_node_labels(&bundle, declaration, &term);
                 print_dot_hypergraph(&term, labels.as_deref());
             }
+            InspectFormat::Formula => {
+                return Err(anyhow::anyhow!(
+                    "--format formula is only available for --stage type-term, --stage expanded-type-term, --stage proof-type-map, --stage type-map, and --stage expanded-type-map"
+                ));
+            }
         },
         InspectArrowStage::RawTypeMap => {
             let coarity =
@@ -171,9 +182,52 @@ fn inspect_arrow(
                     let labels = raw_type_map_node_labels(&raw_type_map.graph, &coarity);
                     print_dot_raw_type_map(&raw_type_map, labels.as_deref());
                 }
+                InspectFormat::Formula => {
+                    return Err(anyhow::anyhow!(
+                        "--format formula is only available for --stage type-term, --stage expanded-type-term, --stage proof-type-map, --stage type-map, and --stage expanded-type-map"
+                    ));
+                }
             }
         }
-        InspectArrowStage::TypeMap => {
+        InspectArrowStage::TypeMap
+        | InspectArrowStage::ProofTypeMap
+        | InspectArrowStage::ExpandedTypeMap => {
+            let explicit_expanded = matches!(&stage, InspectArrowStage::ExpandedTypeMap);
+            term = inline_definitions(&bundle, term)?;
+
+            let coarity =
+                |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
+            let type_map = proof_type_map(&bundle.arrow_theory, &mut term)?;
+
+            match format {
+                InspectFormat::Text => {
+                    println!();
+                    if explicit_expanded {
+                        println!("expanded-type-map:");
+                    } else {
+                        println!("proof-type-map:");
+                    }
+                    print_open_hypergraph(&type_map);
+                }
+                InspectFormat::Dot => {
+                    let edge_labels = proof_type_map_edge_labels(&bundle, &term);
+                    let labels = type_map_node_labels(&type_map, &coarity)
+                        .or_else(|| term_node_labels(&bundle, declaration, &term));
+                    print_dot_hypergraph_with_edge_labels(
+                        &type_map,
+                        labels.as_deref(),
+                        &edge_labels,
+                    );
+                }
+                InspectFormat::Formula => {
+                    println!("{}", proof_type_map_formula(&bundle, &term));
+                }
+            }
+        }
+        InspectArrowStage::TypeTerm | InspectArrowStage::ExpandedTypeTerm => {
+            let explicit_expanded = matches!(&stage, InspectArrowStage::ExpandedTypeTerm);
+            term = inline_definitions(&bundle, term)?;
+
             let coarity =
                 |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
             let source = forget_labels(try_interpret(
@@ -184,28 +238,44 @@ fn inspect_arrow(
                 &bundle.object_theory,
                 &declaration.target_map,
             )?);
-            let (type_map, quotient, node_type_indices) =
-                type_term(&bundle.arrow_theory, source, target, &mut term)?;
+            let (type_term, quotient, node_type_indices) = type_term(
+                &bundle.arrow_theory,
+                source.clone(),
+                target.clone(),
+                &mut term,
+            )?;
 
             match format {
                 InspectFormat::Text => {
                     println!();
-                    println!("type-map:");
+                    if explicit_expanded {
+                        println!("expanded-type-term:");
+                    } else {
+                        println!("type-term:");
+                    }
                     println!("  quotient: {:?}", quotient);
                     println!("  proof node type indices: {:?}", node_type_indices);
-                    print_open_hypergraph(&type_map);
+                    print_open_hypergraph(&type_term);
                 }
                 InspectFormat::Dot => {
-                    let labels = type_map_node_labels(&type_map, &coarity);
-                    print_dot_hypergraph(&type_map, labels.as_deref());
+                    let mut raw_term = term.clone();
+                    let raw = raw_type_term(&bundle.arrow_theory, source, target, &mut raw_term)?;
+                    let edge_labels = type_term_edge_labels(&bundle, &term, &raw);
+                    let labels = type_map_node_labels(&type_term, &coarity);
+                    print_dot_hypergraph_with_edge_labels(
+                        &type_term,
+                        labels.as_deref(),
+                        &edge_labels,
+                    );
+                }
+                InspectFormat::Formula => {
+                    println!("{}", type_term_formula(&bundle, declaration, &term));
                 }
             }
         }
         InspectArrowStage::Ssa => {
-            if format == InspectFormat::Dot {
-                return Err(anyhow::anyhow!(
-                    "--format dot is only available for --stage term, --stage raw-type-map, and --stage type-map"
-                ));
+            if format != InspectFormat::Text {
+                return Err(anyhow::anyhow!("--stage ssa only supports --format text"));
             }
 
             let source = forget_labels(try_interpret(
@@ -237,6 +307,11 @@ fn inspect_arrow_build_match(
     if format == InspectFormat::Dot {
         return Err(anyhow::anyhow!(
             "--format dot is not available for the declaration-level arrow inspector"
+        ));
+    }
+    if format == InspectFormat::Formula {
+        return Err(anyhow::anyhow!(
+            "--format formula is not available for the declaration-level arrow inspector"
         ));
     }
 
@@ -345,6 +420,138 @@ fn raw_type_map_node_labels(
     )
 }
 
+fn proof_type_map_edge_labels(
+    bundle: &TheoryBundle,
+    term: &OpenHypergraph<(), OperationKey>,
+) -> Vec<String> {
+    let mut labels = Vec::new();
+    for op in &term.hypergraph.edges {
+        let (source_type, target_type) = bundle.arrow_theory.type_maps(op);
+        let match_edges = source_type.hypergraph.edges.iter();
+        let build_edges = target_type.hypergraph.edges.iter();
+        let match_count = match_edges.len();
+        let build_count = build_edges.len();
+
+        for (i, edge) in match_edges.enumerate() {
+            labels.push(format!(
+                "{op} match {}/{}: {}",
+                i + 1,
+                match_count,
+                Dual::Rev(edge.clone())
+            ));
+        }
+
+        for (i, edge) in build_edges.enumerate() {
+            labels.push(format!(
+                "{op} build {}/{}: {}",
+                i + 1,
+                build_count,
+                Dual::Fwd(edge.clone())
+            ));
+        }
+    }
+
+    labels
+}
+
+fn type_term_edge_labels(
+    bundle: &TheoryBundle,
+    term: &OpenHypergraph<(), OperationKey>,
+    raw: &metacat::check::RawTypeTerm<OperationKey>,
+) -> Vec<String> {
+    let mut labels: Vec<String> = raw
+        .graph
+        .hypergraph
+        .edges
+        .iter()
+        .map(|edge| edge.to_string())
+        .collect();
+
+    let source_count = raw.source.edge_range.len();
+    for (offset, edge_index) in raw.source.edge_range.clone().enumerate() {
+        labels[edge_index] = format!(
+            "source+ {}/{}: {}",
+            offset + 1,
+            source_count,
+            raw.graph.hypergraph.edges[edge_index]
+        );
+    }
+
+    let target_count = raw.target.edge_range.len();
+    for (offset, edge_index) in raw.target.edge_range.clone().enumerate() {
+        labels[edge_index] = format!(
+            "target- {}/{}: {}",
+            offset + 1,
+            target_count,
+            raw.graph.hypergraph.edges[edge_index]
+        );
+    }
+
+    let mut edge_index = raw.proof.edge_range.start;
+    for op in &term.hypergraph.edges {
+        let (source_type, target_type) = bundle.arrow_theory.type_maps(op);
+        let match_count = source_type.hypergraph.edges.len();
+        let build_count = target_type.hypergraph.edges.len();
+
+        for i in 0..match_count {
+            labels[edge_index] = format!(
+                "{op} match {}/{}: {}",
+                i + 1,
+                match_count,
+                raw.graph.hypergraph.edges[edge_index]
+            );
+            edge_index += 1;
+        }
+
+        for i in 0..build_count {
+            labels[edge_index] = format!(
+                "{op} build {}/{}: {}",
+                i + 1,
+                build_count,
+                raw.graph.hypergraph.edges[edge_index]
+            );
+            edge_index += 1;
+        }
+    }
+
+    labels
+}
+
+fn type_term_formula(
+    bundle: &TheoryBundle,
+    declaration: &Declaration,
+    term: &OpenHypergraph<(), OperationKey>,
+) -> String {
+    let mut parts = vec![format!("source+({})", declaration.source_map)];
+    parts.extend(proof_type_map_formula_parts(bundle, term));
+    parts.push(format!("target-({})", declaration.target_map));
+    parts.join(" ; ")
+}
+
+fn proof_type_map_formula(
+    bundle: &TheoryBundle,
+    term: &OpenHypergraph<(), OperationKey>,
+) -> String {
+    proof_type_map_formula_parts(bundle, term).join(" ; ")
+}
+
+fn proof_type_map_formula_parts(
+    bundle: &TheoryBundle,
+    term: &OpenHypergraph<(), OperationKey>,
+) -> Vec<String> {
+    let mut parts = Vec::new();
+    for op in &term.hypergraph.edges {
+        let (source_type, target_type) = bundle.arrow_theory.type_maps(op);
+        if !source_type.hypergraph.edges.is_empty() {
+            parts.push(format!("{op}-"));
+        }
+        if !target_type.hypergraph.edges.is_empty() {
+            parts.push(format!("{op}+"));
+        }
+    }
+    parts
+}
+
 fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()> {
     if !trace {
         return Err(anyhow::anyhow!("inspect check currently requires --trace"));
@@ -376,7 +583,7 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
     println!("term:");
     print_open_hypergraph(&trace.term);
     println!();
-    println!("type-map:");
+    println!("type-term:");
     println!("  quotient: {:?}", trace.quotient);
     println!("  proof node type indices: {:?}", trace.node_type_indices);
     print_open_hypergraph(&trace.type_term);

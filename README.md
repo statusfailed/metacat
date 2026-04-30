@@ -81,9 +81,21 @@ Inspection stages correspond to different points in the checker pipeline:
 - `term` is the interpreted proof body as an open hypergraph over proof arrows such as `wi`, `wn`, or `ax-mp`.
 - `raw-type-map` is the operational hypergraph after composing the source,
   proof, and target pieces, but before the final quotient that glues equal
-  nodes together.
-- `type-map` is the operational hypergraph that the checker evaluates. It expands proof arrows into syntax constructors and matchers, giving the chain `source+ ; proof-as-type-map ; target-`.
-- `ssa` is the topological order used to evaluate the `type-map`. It is a textual execution order, not a separate hypergraph.
+  nodes together. More precisely, this is the raw checker type term
+  `source+ ; proof-type-map ; target-`.
+- `type-term` is the quotient of that checker type term:
+  `source+ ; proof-type-map ; target-`. The proof body is recursively expanded
+  through `def-arrow`s first; every remaining primitive `arrow` is expanded into
+  its match/build type-map interface.
+- `proof-type-map` is the proof body's type map: proof arrows are replaced by
+  their match/build interfaces, without adding the declaration source and
+  target checks. The proof body is recursively expanded through `def-arrow`s
+  first; every remaining primitive `arrow` is expanded into its match/build
+  type-map interface. `type-map` is accepted as a shorter alias for this view.
+- `expanded-type-term` is accepted as an explicit alias for `type-term`.
+- `expanded-type-map` is accepted as an explicit alias for `proof-type-map`.
+- `ssa` is the topological order used to evaluate the checker type term. It is
+  a textual execution order, not a separate hypergraph.
 
 List the declarations metacat parsed from a file:
 
@@ -100,25 +112,45 @@ metacat inspect arrow examples/fol.hex win --stage term
 Inspect an arrow's match/build type and implementation:
 
 ```sh
-metacat inspect arrow examples/expressions.hex add-op
+metacat inspect arrow examples/expressions.hex add
 ```
 
-Inspect the operational type-map used by the checker:
+Inspect the checker type term `source+ ; proof-type-map ; target-`:
 
 ```sh
-metacat inspect arrow examples/fol.hex win --stage type-map
+metacat inspect arrow examples/fol.hex win --stage type-term
 ```
 
-Inspect the same chain before the final quotient pass:
+Inspect only the proof body's type map:
+
+```sh
+metacat inspect arrow examples/fol.hex win --stage proof-type-map
+```
+
+The checker type term expands nested `def-arrow` implementations by default.
+`expanded-type-term` is accepted as an explicit alias:
+
+```sh
+metacat inspect arrow examples/expressions.hex assign-x-sum-times-one --stage expanded-type-term
+```
+
+The proof type map also expands nested `def-arrow` implementations by default.
+`expanded-type-map` is accepted as an explicit alias:
+
+```sh
+metacat inspect arrow examples/expressions.hex assign-x-sum-times-one --stage expanded-type-map
+```
+
+Inspect the full checker chain before the final quotient pass:
 
 ```sh
 metacat inspect arrow examples/fol.hex win --stage raw-type-map
 ```
 
-This is the hypergraph for the chain
+This is the hypergraph for the checker chain
 
 ```text
-source+ ; proof-as-type-map ; target-
+source+ ; proof-type-map ; target-
 ```
 
 and its edges are labelled by syntax constructors and matchers such as
@@ -131,7 +163,7 @@ metacat inspect arrow examples/fol.hex win --stage ssa
 ```
 
 Trace the checker step by step, including the tree values flowing through the
-type-map:
+checker type term:
 
 ```sh
 metacat inspect check examples/fol.hex win --trace
@@ -140,22 +172,35 @@ metacat inspect check examples/fol.hex win --trace
 For graph visualization, emit Graphviz DOT for hypergraph stages:
 
 ```sh
-metacat inspect arrow examples/fol.hex win --stage type-map --format dot
+metacat inspect arrow examples/fol.hex win --stage type-term --format dot
+```
+
+For a compact composition-only view, emit the formula form:
+
+```sh
+metacat inspect arrow examples/expressions.hex assign-x-sum-times-one --stage type-term --format formula
+```
+
+This prints terms such as:
+
+```text
+source+({num num num}) ; add- ; add+ ; one+ ; mul- ; mul+ ; target-({num num num})
 ```
 
 The `raw-type-map` DOT output is clustered by default into `source+`,
 `proof type-map`, and `target-`, with dotted edges showing pending node
 identifications before quotienting.
 
-For example, render the operational type-map to SVG:
+For example, render the checker type term to SVG:
 
 ```sh
-metacat inspect arrow examples/fol.hex win --stage type-map --format dot \
-  | dot -Tsvg > /tmp/win-type-map.svg
+metacat inspect arrow examples/fol.hex win --stage type-term --format dot \
+  | dot -Tsvg > /tmp/win-type-term.svg
 ```
 
-DOT output is available for `term`, `raw-type-map`, and `type-map`. The `ssa`
-stage is a textual linearization rather than a hypergraph.
+DOT output is available for `term`, `raw-type-map`, `type-term`,
+`expanded-type-term`, `proof-type-map`, `type-map`, and `expanded-type-map`.
+The `ssa` stage is a textual linearization rather than a hypergraph.
 
 # tooling
 

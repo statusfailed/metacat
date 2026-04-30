@@ -32,6 +32,26 @@ where
     println!("{}", graph.print(&mut ctx));
 }
 
+pub fn print_dot_hypergraph_with_edge_labels<O, A>(
+    f: &OpenHypergraph<O, A>,
+    node_labels: Option<&[String]>,
+    edge_labels: &[String],
+) where
+    O: Clone + PartialEq + std::fmt::Debug,
+    A: Clone + PartialEq + std::fmt::Display + std::fmt::Debug,
+{
+    if edge_labels.len() != f.hypergraph.edges.len() {
+        print_dot_hypergraph(f, node_labels);
+        return;
+    }
+
+    if let Some(graph) = f.clone().with_edges(|_| edge_labels.to_vec()) {
+        print_dot_hypergraph(&graph, node_labels);
+    } else {
+        print_dot_hypergraph(f, node_labels);
+    }
+}
+
 pub fn print_dot_raw_type_map<O>(raw: &RawTypeTerm<O>, node_labels: Option<&[String]>)
 where
     O: Clone + PartialEq + std::fmt::Display + std::fmt::Debug,

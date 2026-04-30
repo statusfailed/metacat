@@ -118,7 +118,18 @@ pub fn check_trace<O: Eq + Clone + Debug + std::fmt::Display>(
     })
 }
 
-/// Compute the type map `source+ ; arrow.s- ; arrow.t+ ; target-`.
+/// Compute the proof term's type map, without composing the declaration source/target checks.
+pub fn proof_type_map<O: Eq + Clone + Debug + std::fmt::Display>(
+    theory: &Theory<O>,
+    arrow: &mut OpenHypergraph<(), OperationKey>,
+) -> Result<OpenHypergraph<(), Dual<O>>, Error<O>> {
+    arrow.quotient().map_err(Error::InvalidQuotient)?;
+    let mut type_map = AsType(theory).map_arrow(arrow);
+    type_map.quotient().map_err(Error::InvalidQuotient)?;
+    Ok(type_map)
+}
+
+/// Compute the checker type term `source+ ; proof-type-map ; target-`.
 pub fn type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     theory: &Theory<O>,
     source: OpenHypergraph<(), O>,
@@ -137,7 +148,7 @@ pub fn type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     Ok((type_term, quotient, node_type_indices))
 }
 
-/// Compute the raw type map `source+ ; arrow.s- ; arrow.t+ ; target-` before the final quotient.
+/// Compute the raw checker type term `source+ ; proof-type-map ; target-` before the final quotient.
 pub fn raw_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     theory: &Theory<O>,
     source: OpenHypergraph<(), O>,
