@@ -1,0 +1,273 @@
+################################################################################
+# A small typed arithmetic expression language
+################################################################################
+
+# Objects such as `add`, `sub`, and `if` are raw expression constructors.
+# Objects such as `int` and `bool` are typing judgements over raw expressions.
+#
+# Arrows are typing rules. For example:
+#
+#   (arrow infer-add : {int int} -> (add int))
+#
+# means:
+#
+#   x : int, y : int
+#   ----------------
+#   add(x, y) : int
+
+##############################################
+# Typing judgements
+##############################################
+
+(object int : 1 -> 1)
+(object bool : 1 -> 1)
+
+##############################################
+# Raw expression constructors
+##############################################
+
+(object neg : 1 -> 1)
+(object add : 2 -> 1)
+(object sub : 2 -> 1)
+(object mul : 2 -> 1)
+
+(object eq : 2 -> 1)
+(object lt : 2 -> 1)
+(object and : 2 -> 1)
+(object not : 1 -> 1)
+(object if : 3 -> 1)
+
+##############################################
+# Typing rules
+##############################################
+
+(arrow infer-neg : int -> (neg int))
+(arrow infer-add : {int int} -> (add int))
+(arrow infer-sub : {int int} -> (sub int))
+(arrow infer-mul : {int int} -> (mul int))
+
+(arrow infer-eq : {int int} -> (eq bool))
+(arrow infer-lt : {int int} -> (lt bool))
+(arrow infer-and : {bool bool} -> (and bool))
+(arrow infer-not : bool -> (not bool))
+
+# Conditional expression: if c then x else y.
+(arrow infer-if-int : {bool int int} -> (if int))
+
+################################################################################
+# Example typing derivations
+################################################################################
+
+# x + y : int
+(def-arrow infer-sum : {int int} -> {[x y.]
+  ([.x y] add [sum.])
+  ([.sum] int)
+} =
+  infer-add
+)
+
+# x * (y + z) : int
+(def-arrow infer-scale-sum : {int int int} -> {[x y z.]
+  ([.y z] add [sum.])
+  ([.x sum] mul [product.])
+  ([.product] int)
+} =
+  ([x y z.]
+    ([.y z] infer-add [sum.])
+    ([.x sum] infer-mul)
+  )
+)
+
+# let s = x + y in s * s : int
+#
+# This is a DAG-shaped typing derivation: the computed expression `s` is used twice.
+(def-arrow infer-square-sum : {int int} -> {[x y.]
+  ([.x y] add [s.])
+  ([.s s] mul [product.])
+  ([.product] int)
+} =
+  ([x y.]
+    ([.x y] infer-add [s.])
+    ([.s s] infer-mul)
+  )
+)
+
+# (x < y) and not (x == y) : bool
+(def-arrow infer-strictly-less-distinct : {int int} -> {[x y.]
+  ([.x y] lt [is-lt.])
+  ([.x y] eq [is-eq.])
+  ([.is-eq] not [neq.])
+  ([.is-lt neq] and [result.])
+  ([.result] bool)
+} =
+  ([x y.]
+    ([.x y] infer-lt [is-lt.])
+    ([.x y] infer-eq [is-eq.])
+    ([.is-eq] infer-not [neq.])
+    ([.is-lt neq] infer-and)
+  )
+)
+
+# if x < y then y - x else x - y : int
+(def-arrow infer-distance : {int int} -> {[x y.]
+  ([.x y] lt [x-lt-y.])
+  ([.y x] sub [y-minus-x.])
+  ([.x y] sub [x-minus-y.])
+  ([.x-lt-y y-minus-x x-minus-y] if [distance.])
+  ([.distance] int)
+} =
+  ([x y.]
+    ([.x y] infer-lt [x-lt-y.])
+    ([.y x] infer-sub [y-minus-x.])
+    ([.x y] infer-sub [x-minus-y.])
+    ([.x-lt-y y-minus-x x-minus-y] infer-if-int)
+  )
+)
+
+################################################################################
+# Command well-definedness
+################################################################################
+
+# `has(g, x)` means variable x is available in context g.
+# `aexp(g, a)` means arithmetic expression a is well-defined in context g.
+# `bexp(g, b)` means boolean expression b is well-defined in context g.
+# `cmd(g, c)` means command c is well-defined in context g.
+(object has : 2 -> 1)
+(object aexp : 2 -> 1)
+(object bexp : 2 -> 1)
+(object cmd : 2 -> 1)
+
+##############################################
+# Raw command constructors
+##############################################
+
+(object skip-cmd : 0 -> 1)
+(object abort-cmd : 0 -> 1)
+(object assign : 2 -> 1)
+(object seq : 2 -> 1)
+(object if-cmd : 3 -> 1)
+
+##############################################
+# Command and expression well-definedness rules
+##############################################
+
+# Variables in scope are arithmetic expressions.
+(arrow infer-var-aexp : has -> aexp)
+
+# Arithmetic and boolean expression formation under a context.
+(arrow infer-add-aexp : {[g x y.]
+  ([.g x] aexp)
+  ([.g y] aexp)
+} -> {[g x y.]
+  ([.x y] add [sum.])
+  ([.g sum] aexp)
+})
+
+(arrow infer-sub-aexp : {[g x y.]
+  ([.g x] aexp)
+  ([.g y] aexp)
+} -> {[g x y.]
+  ([.x y] sub [difference.])
+  ([.g difference] aexp)
+})
+
+(arrow infer-lt-bexp : {[g x y.]
+  ([.g x] aexp)
+  ([.g y] aexp)
+} -> {[g x y.]
+  ([.x y] lt [comparison.])
+  ([.g comparison] bexp)
+})
+
+# Commands that are well-defined in any context.
+(arrow infer-skip : [g .] -> {[g.]
+  ([.] skip-cmd [c.])
+  ([.g c] cmd)
+})
+
+(arrow infer-abort : [g .] -> {[g.]
+  ([.] abort-cmd [c.])
+  ([.g c] cmd)
+})
+
+# Assignment is well-defined when the assigned variable is in scope and the
+# assigned arithmetic expression is well-defined in the same context.
+(arrow infer-assign : {[g x a.]
+  ([.g x] has)
+  ([.g a] aexp)
+} -> {[g x a.]
+  ([.x a] assign [c.])
+  ([.g c] cmd)
+})
+
+# Sequential composition preserves the context: both commands are checked under
+# the same g.
+(arrow infer-seq : {[g c d.]
+  ([.g c] cmd)
+  ([.g d] cmd)
+} -> {[g c d.]
+  ([.c d] seq [program.])
+  ([.g program] cmd)
+})
+
+# Conditional command: the guard is a boolean expression and both branches are
+# commands under the same context.
+(arrow infer-if-cmd : {[g b c d.]
+  ([.g b] bexp)
+  ([.g c] cmd)
+  ([.g d] cmd)
+} -> {[g b c d.]
+  ([.b c d] if-cmd [program.])
+  ([.g program] cmd)
+})
+
+################################################################################
+# Example command derivation
+################################################################################
+
+# Given x and y in context g, the following command is well-defined:
+#
+#   x := x + y;
+#   if x < y then
+#     y := y - x
+#   else
+#     y := x - y
+(def-arrow infer-example-program : {[g x y.]
+  ([.g x] has)
+  ([.g y] has)
+} -> {[g x y.]
+  ([.x y] add [x-plus-y.])
+  ([.x x-plus-y] assign [assign-x.])
+
+  ([.x y] lt [x-lt-y.])
+
+  ([.y x] sub [y-minus-x.])
+  ([.y y-minus-x] assign [then-cmd.])
+
+  ([.x y] sub [x-minus-y.])
+  ([.y x-minus-y] assign [else-cmd.])
+
+  ([.x-lt-y then-cmd else-cmd] if-cmd [if-branch.])
+  ([.assign-x if-branch] seq [program.])
+
+  ([.g program] cmd)
+} =
+  {[has-x has-y.]
+    ([.has-x] infer-var-aexp [x-aexp.])
+    ([.has-y] infer-var-aexp [y-aexp.])
+
+    ([.x-aexp y-aexp] infer-add-aexp [sum-aexp.])
+    ([.has-x sum-aexp] infer-assign [assign-x-cmd.])
+
+    ([.x-aexp y-aexp] infer-lt-bexp [condition.])
+
+    ([.y-aexp x-aexp] infer-sub-aexp [then-aexp.])
+    ([.has-y then-aexp] infer-assign [then-cmd.])
+
+    ([.x-aexp y-aexp] infer-sub-aexp [else-aexp.])
+    ([.has-y else-aexp] infer-assign [else-cmd.])
+
+    ([.condition then-cmd else-cmd] infer-if-cmd [if-cmd.])
+    ([.assign-x-cmd if-cmd] infer-seq)
+  }
+)
