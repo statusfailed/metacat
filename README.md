@@ -109,6 +109,13 @@ Inspect a proof definition as an open hypergraph over proof arrows:
 metacat inspect arrow examples/fol.hex win --stage term
 ```
 
+Inspect the declaration source or target object hypergraph:
+
+```sh
+metacat inspect arrow examples/expressions.hex assign-x-sum-times-one --stage source
+metacat inspect arrow examples/expressions.hex assign-x-sum-times-one --stage target --format dot
+```
+
 Inspect an arrow's match/build type and implementation:
 
 ```sh

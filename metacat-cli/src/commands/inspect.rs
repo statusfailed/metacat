@@ -49,6 +49,8 @@ enum InspectTarget {
 #[derive(ValueEnum, Clone, Debug)]
 enum InspectArrowStage {
     Term,
+    Source,
+    Target,
     RawTypeMap,
     TypeMap,
     TypeTerm,
@@ -138,6 +140,31 @@ fn inspect_arrow(
     }
 
     match stage {
+        InspectArrowStage::Source | InspectArrowStage::Target => {
+            let (stage_name, map) = match stage {
+                InspectArrowStage::Source => ("source", &declaration.source_map),
+                InspectArrowStage::Target => ("target", &declaration.target_map),
+                _ => unreachable!(),
+            };
+            let graph = forget_labels(try_interpret(&bundle.object_theory, map)?);
+
+            match format {
+                InspectFormat::Text => {
+                    println!();
+                    println!("{stage_name}:");
+                    print_open_hypergraph(&graph);
+                }
+                InspectFormat::Dot => {
+                    let labels = object_map_node_labels(&graph, &bundle);
+                    print_dot_hypergraph(&graph, labels.as_deref());
+                }
+                InspectFormat::Formula => {
+                    return Err(anyhow::anyhow!(
+                        "--format formula is not available for --stage source or --stage target"
+                    ));
+                }
+            }
+        }
         InspectArrowStage::Term => match format {
             InspectFormat::Text => {
                 println!();
@@ -411,6 +438,29 @@ fn raw_type_map_node_labels(
     let mut quotient_graph = raw_type_map.clone();
     let quotient = quotient_graph.quotient().ok()?;
     let quotient_labels = type_map_node_labels(&quotient_graph, coarity)?;
+    Some(
+        quotient
+            .table
+            .iter()
+            .map(|node| quotient_labels.get(*node).cloned().unwrap_or_default())
+            .collect(),
+    )
+}
+
+fn object_map_node_labels(
+    graph: &OpenHypergraph<(), OperationKey>,
+    bundle: &TheoryBundle,
+) -> Option<Vec<String>> {
+    let coarity =
+        |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
+    let mut quotient_graph = graph.clone();
+    let quotient = quotient_graph.quotient().ok()?;
+    let quotient_labels: Vec<String> = eval_type(dual::into_fwd(quotient_graph))
+        .ok()?
+        .iter()
+        .map(|tree| tree.pretty(Some(&coarity)))
+        .collect();
+
     Some(
         quotient
             .table
