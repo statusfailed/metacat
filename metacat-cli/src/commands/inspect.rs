@@ -167,11 +167,15 @@ fn inspect_arrow(
         }
         InspectArrowStage::Term => match format {
             InspectFormat::Text => {
+                term.quotient()
+                    .map_err(|quotient| anyhow::anyhow!("invalid term quotient: {:?}", quotient))?;
                 println!();
                 println!("term:");
                 print_open_hypergraph(&term);
             }
             InspectFormat::Dot => {
+                term.quotient()
+                    .map_err(|quotient| anyhow::anyhow!("invalid term quotient: {:?}", quotient))?;
                 let labels = term_node_labels(&bundle, declaration, &term);
                 print_dot_hypergraph(&term, labels.as_deref());
             }
