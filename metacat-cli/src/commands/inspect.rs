@@ -1,11 +1,12 @@
 use crate::render::{
     print_dot_hypergraph, print_dot_raw_type_map, print_open_hypergraph, print_state,
 };
-use crate::util::{find_definition, forget_labels};
+use crate::util::{find_arrow_declaration, find_definition, forget_labels};
 
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
 use metacat::check::{check, check_trace, eval_type, raw_type_term, type_term};
+use metacat::dual;
 use metacat::dual::Dual;
 use metacat::syntax::{Declaration, TheoryBundle};
 use metacat::theory::OperationKey;
@@ -30,7 +31,7 @@ enum InspectTarget {
         #[arg()]
         name: String,
         #[arg(long, value_enum)]
-        stage: InspectArrowStage,
+        stage: Option<InspectArrowStage>,
         #[arg(long, value_enum, default_value_t = InspectFormat::Text)]
         format: InspectFormat,
     },
@@ -109,10 +110,15 @@ fn print_declaration_group(title: &str, declarations: &[Declaration], theory: &s
 fn inspect_arrow(
     path: PathBuf,
     name: String,
-    stage: InspectArrowStage,
+    stage: Option<InspectArrowStage>,
     format: InspectFormat,
 ) -> anyhow::Result<()> {
     let bundle = TheoryBundle::from_file(path)?;
+    let Some(stage) = stage else {
+        let declaration = find_arrow_declaration(&bundle, &name)?;
+        return inspect_arrow_build_match(&bundle, declaration, format);
+    };
+
     let declaration = find_definition(&bundle, &name)?;
     let def_hexpr = declaration.definition.as_ref().unwrap();
     let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
@@ -221,6 +227,67 @@ fn inspect_arrow(
     }
 
     Ok(())
+}
+
+fn inspect_arrow_build_match(
+    bundle: &TheoryBundle,
+    declaration: &Declaration,
+    format: InspectFormat,
+) -> anyhow::Result<()> {
+    if format == InspectFormat::Dot {
+        return Err(anyhow::anyhow!(
+            "--format dot is not available for the declaration-level arrow inspector"
+        ));
+    }
+
+    let source = forget_labels(try_interpret(
+        &bundle.object_theory,
+        &declaration.source_map,
+    )?);
+    let target = forget_labels(try_interpret(
+        &bundle.object_theory,
+        &declaration.target_map,
+    )?);
+    let source_match = dual::into_rev(source);
+    let target_build = dual::into_fwd(target);
+
+    println!(
+        "{} {} : {} -> {}",
+        declaration.theory, declaration.name, declaration.source_map, declaration.target_map
+    );
+    println!();
+    println!("match:");
+    println!("  input pattern: {}", declaration.source_map);
+    print_build_match_operations("  operations", &source_match);
+    println!();
+    println!("build:");
+    println!("  output pattern: {}", declaration.target_map);
+    print_build_match_operations("  operations", &target_build);
+    println!();
+    println!("implementation:");
+    match &declaration.definition {
+        Some(definition) => println!("  body: {definition}"),
+        None => println!("  primitive"),
+    }
+
+    Ok(())
+}
+
+fn print_build_match_operations(label: &str, graph: &OpenHypergraph<(), Dual<OperationKey>>) {
+    if graph.hypergraph.edges.is_empty() {
+        println!("{label}: none; variables are passed through");
+        return;
+    }
+
+    println!("{label}:");
+    for (i, edge) in graph.hypergraph.edges.iter().enumerate() {
+        let adjacency = &graph.hypergraph.adjacency[i];
+        println!(
+            "    {edge} : {} -> {}",
+            adjacency.sources.len(),
+            adjacency.targets.len()
+        );
+    }
 }
 
 fn term_node_labels(

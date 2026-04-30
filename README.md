@@ -75,6 +75,9 @@ from a `.hex` file.
 
 Inspection stages correspond to different points in the checker pipeline:
 
+- the default arrow inspector shows an arrow's type using the user-facing
+  operational terms: the source is interpreted as a `match`, the target as a
+  `build`, and the implementation is either primitive or a proof body.
 - `term` is the interpreted proof body as an open hypergraph over proof arrows such as `wi`, `wn`, or `ax-mp`.
 - `raw-type-map` is the operational hypergraph after composing the source,
   proof, and target pieces, but before the final quotient that glues equal
@@ -92,6 +95,12 @@ Inspect a proof definition as an open hypergraph over proof arrows:
 
 ```sh
 metacat inspect arrow examples/fol.hex win --stage term
+```
+
+Inspect an arrow's match/build type and implementation:
+
+```sh
+metacat inspect arrow examples/expressions.hex add-op
 ```
 
 Inspect the operational type-map used by the checker:
