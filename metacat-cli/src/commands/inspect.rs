@@ -5,7 +5,7 @@ use crate::util::{find_definition, forget_labels};
 
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
-use metacat::check::{check_trace, eval_type, raw_type_term, type_term};
+use metacat::check::{check, check_trace, eval_type, raw_type_term, type_term};
 use metacat::dual::Dual;
 use metacat::syntax::{Declaration, TheoryBundle};
 use metacat::theory::OperationKey;
@@ -132,7 +132,10 @@ fn inspect_arrow(
                 println!("term:");
                 print_open_hypergraph(&term);
             }
-            InspectFormat::Dot => print_dot_hypergraph(&term, None),
+            InspectFormat::Dot => {
+                let labels = term_node_labels(&bundle, declaration, &term);
+                print_dot_hypergraph(&term, labels.as_deref());
+            }
         },
         InspectArrowStage::RawTypeMap => {
             let coarity =
@@ -218,6 +221,33 @@ fn inspect_arrow(
     }
 
     Ok(())
+}
+
+fn term_node_labels(
+    bundle: &TheoryBundle,
+    declaration: &Declaration,
+    term: &OpenHypergraph<(), OperationKey>,
+) -> Option<Vec<String>> {
+    let coarity =
+        |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
+    let mut quotient_term = term.clone();
+    let quotient = quotient_term.quotient().ok()?;
+    let source = forget_labels(try_interpret(&bundle.object_theory, &declaration.source_map).ok()?);
+    let target = forget_labels(try_interpret(&bundle.object_theory, &declaration.target_map).ok()?);
+    let types = check(&bundle.arrow_theory, source, target, &mut quotient_term).ok()?;
+
+    Some(
+        quotient
+            .table
+            .iter()
+            .map(|node| {
+                types
+                    .get(*node)
+                    .map(|tree| tree.pretty(Some(&coarity)))
+                    .unwrap_or_default()
+            })
+            .collect(),
+    )
 }
 
 fn type_map_node_labels(
