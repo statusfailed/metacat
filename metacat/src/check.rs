@@ -2,6 +2,7 @@ use open_hypergraphs::lax::functor::Functor;
 use open_hypergraphs::lax::*;
 use open_hypergraphs::strict::vec::FiniteFunction;
 use std::fmt::Debug;
+use std::ops::Range;
 use thiserror::Error;
 
 use crate::ssa::{SSA, SSAError, ssa};
@@ -54,6 +55,21 @@ pub struct CheckTrace<O> {
     pub eval_steps: Vec<EvalStep<O>>,
     pub result: Vec<Tree<(), O>>,
     pub node_types: Vec<Tree<(), O>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeMapComponent {
+    pub node_range: Range<usize>,
+    pub edge_range: Range<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RawTypeTerm<O> {
+    pub graph: OpenHypergraph<(), Dual<O>>,
+    pub source: TypeMapComponent,
+    pub proof: TypeMapComponent,
+    pub target: TypeMapComponent,
+    pub proof_node_range_before_quotient: Range<usize>,
 }
 
 // TODO: include location info (NodeId)
@@ -109,10 +125,14 @@ pub fn type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     target: OpenHypergraph<(), O>,
     arrow: &mut OpenHypergraph<(), OperationKey>,
 ) -> Result<(OpenHypergraph<(), Dual<O>>, FiniteFunction, Vec<usize>), Error<O>> {
-    let (mut type_term, offset, size) = raw_type_term(theory, source, target, arrow)?;
+    let raw = raw_type_term(theory, source, target, arrow)?;
+    let mut type_term = raw.graph;
 
     let quotient = type_term.quotient().map_err(Error::InvalidQuotient)?;
-    let node_type_indices = (offset..offset + size).map(|i| quotient.table[i]).collect();
+    let node_type_indices = raw
+        .proof_node_range_before_quotient
+        .map(|i| quotient.table[i])
+        .collect();
 
     Ok((type_term, quotient, node_type_indices))
 }
@@ -123,7 +143,7 @@ pub fn raw_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     source: OpenHypergraph<(), O>,
     target: OpenHypergraph<(), O>,
     arrow: &mut OpenHypergraph<(), OperationKey>,
-) -> Result<(OpenHypergraph<(), Dual<O>>, usize, usize), Error<O>> {
+) -> Result<RawTypeTerm<O>, Error<O>> {
     let mut fwd = dual::into_fwd(source);
     let mut rev = dual::into_rev(target);
     fwd.quotient().map_err(Error::InvalidQuotient)?;
@@ -131,16 +151,36 @@ pub fn raw_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     arrow.quotient().map_err(Error::InvalidQuotient)?;
 
     let type_map = AsType(theory).map_arrow(arrow);
+    let source_nodes = 0..fwd.hypergraph.nodes.len();
+    let source_edges = 0..fwd.hypergraph.edges.len();
+    let proof_nodes = source_nodes.end..source_nodes.end + type_map.hypergraph.nodes.len();
+    let proof_edges = source_edges.end..source_edges.end + type_map.hypergraph.edges.len();
+    let target_nodes = proof_nodes.end..proof_nodes.end + rev.hypergraph.nodes.len();
+    let target_edges = proof_edges.end..proof_edges.end + rev.hypergraph.edges.len();
+    let proof_node_range_before_quotient =
+        source_nodes.end..source_nodes.end + arrow.hypergraph.nodes.len();
 
     let type_term = fwd
         .lax_compose(&type_map)
         .and_then(|f| f.lax_compose(&rev))
         .ok_or(Error::<O>::InvalidTypeMaps)?;
 
-    let offset = fwd.hypergraph.nodes.len();
-    let size = arrow.hypergraph.nodes.len();
-
-    Ok((type_term, offset, size))
+    Ok(RawTypeTerm {
+        graph: type_term,
+        source: TypeMapComponent {
+            node_range: source_nodes,
+            edge_range: source_edges,
+        },
+        proof: TypeMapComponent {
+            node_range: proof_nodes,
+            edge_range: proof_edges,
+        },
+        target: TypeMapComponent {
+            node_range: target_nodes,
+            edge_range: target_edges,
+        },
+        proof_node_range_before_quotient,
+    })
 }
 
 /// Evaluate a type map

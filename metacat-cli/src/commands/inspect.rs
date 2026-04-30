@@ -1,4 +1,6 @@
-use crate::render::{print_dot_hypergraph, print_open_hypergraph, print_state};
+use crate::render::{
+    print_dot_hypergraph, print_dot_raw_type_map, print_open_hypergraph, print_state,
+};
 use crate::util::{find_definition, forget_labels};
 
 use clap::{Args, Subcommand, ValueEnum};
@@ -122,39 +124,48 @@ fn inspect_arrow(
     }
 
     match stage {
-        InspectArrowStage::Term => {
-            match format {
-                InspectFormat::Text => {
-                    println!();
-                    println!("term:");
-                    print_open_hypergraph(&term);
-                }
-                InspectFormat::Dot => print_dot_hypergraph(&term),
+        InspectArrowStage::Term => match format {
+            InspectFormat::Text => {
+                println!();
+                println!("term:");
+                print_open_hypergraph(&term);
             }
-        }
+            InspectFormat::Dot => print_dot_hypergraph(&term),
+        },
         InspectArrowStage::RawTypeMap => {
-            let source =
-                forget_labels(try_interpret(&bundle.object_theory, &declaration.source_map)?);
-            let target =
-                forget_labels(try_interpret(&bundle.object_theory, &declaration.target_map)?);
-            let (raw_type_map, offset, size) =
-                raw_type_term(&bundle.arrow_theory, source, target, &mut term)?;
+            let source = forget_labels(try_interpret(
+                &bundle.object_theory,
+                &declaration.source_map,
+            )?);
+            let target = forget_labels(try_interpret(
+                &bundle.object_theory,
+                &declaration.target_map,
+            )?);
+            let raw_type_map = raw_type_term(&bundle.arrow_theory, source, target, &mut term)?;
 
             match format {
                 InspectFormat::Text => {
                     println!();
                     println!("raw-type-map:");
-                    println!("  proof node range before quotient: {offset}..{}", offset + size);
-                    print_open_hypergraph(&raw_type_map);
+                    println!(
+                        "  proof node range before quotient: {}..{}",
+                        raw_type_map.proof_node_range_before_quotient.start,
+                        raw_type_map.proof_node_range_before_quotient.end
+                    );
+                    print_open_hypergraph(&raw_type_map.graph);
                 }
-                InspectFormat::Dot => print_dot_hypergraph(&raw_type_map),
+                InspectFormat::Dot => print_dot_raw_type_map(&raw_type_map),
             }
         }
         InspectArrowStage::TypeMap => {
-            let source =
-                forget_labels(try_interpret(&bundle.object_theory, &declaration.source_map)?);
-            let target =
-                forget_labels(try_interpret(&bundle.object_theory, &declaration.target_map)?);
+            let source = forget_labels(try_interpret(
+                &bundle.object_theory,
+                &declaration.source_map,
+            )?);
+            let target = forget_labels(try_interpret(
+                &bundle.object_theory,
+                &declaration.target_map,
+            )?);
             let (type_map, quotient, node_type_indices) =
                 type_term(&bundle.arrow_theory, source, target, &mut term)?;
 
@@ -176,10 +187,14 @@ fn inspect_arrow(
                 ));
             }
 
-            let source =
-                forget_labels(try_interpret(&bundle.object_theory, &declaration.source_map)?);
-            let target =
-                forget_labels(try_interpret(&bundle.object_theory, &declaration.target_map)?);
+            let source = forget_labels(try_interpret(
+                &bundle.object_theory,
+                &declaration.source_map,
+            )?);
+            let target = forget_labels(try_interpret(
+                &bundle.object_theory,
+                &declaration.target_map,
+            )?);
             let (type_map, _, _) = type_term(&bundle.arrow_theory, source, target, &mut term)?;
 
             println!();
@@ -212,7 +227,8 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
     )?);
 
     let trace = check_trace(&bundle.arrow_theory, source, target, &mut term)?;
-    let coarity = |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
+    let coarity =
+        |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
 
     println!(
         "{} : {} -> {}",
@@ -235,7 +251,11 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
     println!();
     println!("eval:");
     for (i, step) in trace.eval_steps.iter().enumerate() {
-        let inputs: Vec<String> = step.inputs.iter().map(|t| t.pretty(Some(&coarity))).collect();
+        let inputs: Vec<String> = step
+            .inputs
+            .iter()
+            .map(|t| t.pretty(Some(&coarity)))
+            .collect();
         println!("  step {i}: {}", step.ssa);
         println!("    inputs: {}", inputs.join(", "));
         print_state("    state", &step.state, &coarity);

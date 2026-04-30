@@ -1,7 +1,10 @@
 use hexpr::Operation;
 use metacat::syntax::{Declaration, TheoryBundle};
 
-pub fn find_definition<'a>(bundle: &'a TheoryBundle, name: &str) -> anyhow::Result<&'a Declaration> {
+pub fn find_definition<'a>(
+    bundle: &'a TheoryBundle,
+    name: &str,
+) -> anyhow::Result<&'a Declaration> {
     let operation: Operation = name.parse()?;
     bundle
         .definitions

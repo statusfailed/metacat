@@ -134,6 +134,10 @@ For graph visualization, emit Graphviz DOT for hypergraph stages:
 metacat inspect arrow examples/fol.hex win --stage type-map --format dot
 ```
 
+The `raw-type-map` DOT output is clustered by default into `source+`,
+`proof type-map`, and `target-`, with dotted edges showing pending node
+identifications before quotienting.
+
 For example, render the operational type-map to SVG:
 
 ```sh
