@@ -76,6 +76,9 @@ from a `.hex` file.
 Inspection stages correspond to different points in the checker pipeline:
 
 - `term` is the interpreted proof body as an open hypergraph over proof arrows such as `wi`, `wn`, or `ax-mp`.
+- `raw-type-map` is the operational hypergraph after composing the source,
+  proof, and target pieces, but before the final quotient that glues equal
+  nodes together.
 - `type-map` is the operational hypergraph that the checker evaluates. It expands proof arrows into syntax constructors and matchers, giving the chain `source+ ; proof-as-type-map ; target-`.
 - `ssa` is the topological order used to evaluate the `type-map`. It is a textual execution order, not a separate hypergraph.
 
@@ -95,6 +98,12 @@ Inspect the operational type-map used by the checker:
 
 ```sh
 metacat inspect arrow examples/fol.hex win --stage type-map
+```
+
+Inspect the same chain before the final quotient pass:
+
+```sh
+metacat inspect arrow examples/fol.hex win --stage raw-type-map
 ```
 
 This is the hypergraph for the chain
@@ -132,8 +141,8 @@ metacat inspect arrow examples/fol.hex win --stage type-map --format dot \
   | dot -Tsvg > /tmp/win-type-map.svg
 ```
 
-DOT output is available for `term` and `type-map`. The `ssa` stage is a textual
-linearization rather than a hypergraph.
+DOT output is available for `term`, `raw-type-map`, and `type-map`. The `ssa`
+stage is a textual linearization rather than a hypergraph.
 
 # tooling
 

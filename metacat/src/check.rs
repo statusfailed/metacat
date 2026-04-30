@@ -109,6 +109,21 @@ pub fn type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     target: OpenHypergraph<(), O>,
     arrow: &mut OpenHypergraph<(), OperationKey>,
 ) -> Result<(OpenHypergraph<(), Dual<O>>, FiniteFunction, Vec<usize>), Error<O>> {
+    let (mut type_term, offset, size) = raw_type_term(theory, source, target, arrow)?;
+
+    let quotient = type_term.quotient().map_err(Error::InvalidQuotient)?;
+    let node_type_indices = (offset..offset + size).map(|i| quotient.table[i]).collect();
+
+    Ok((type_term, quotient, node_type_indices))
+}
+
+/// Compute the raw type map `source+ ; arrow.s- ; arrow.t+ ; target-` before the final quotient.
+pub fn raw_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
+    theory: &Theory<O>,
+    source: OpenHypergraph<(), O>,
+    target: OpenHypergraph<(), O>,
+    arrow: &mut OpenHypergraph<(), OperationKey>,
+) -> Result<(OpenHypergraph<(), Dual<O>>, usize, usize), Error<O>> {
     let mut fwd = dual::into_fwd(source);
     let mut rev = dual::into_rev(target);
     fwd.quotient().map_err(Error::InvalidQuotient)?;
@@ -117,17 +132,15 @@ pub fn type_term<O: Eq + Clone + Debug + std::fmt::Display>(
 
     let type_map = AsType(theory).map_arrow(arrow);
 
-    let mut type_term = fwd
+    let type_term = fwd
         .lax_compose(&type_map)
         .and_then(|f| f.lax_compose(&rev))
         .ok_or(Error::<O>::InvalidTypeMaps)?;
 
     let offset = fwd.hypergraph.nodes.len();
     let size = arrow.hypergraph.nodes.len();
-    let quotient = type_term.quotient().map_err(Error::InvalidQuotient)?;
-    let node_type_indices = (offset..offset + size).map(|i| quotient.table[i]).collect();
 
-    Ok((type_term, quotient, node_type_indices))
+    Ok((type_term, offset, size))
 }
 
 /// Evaluate a type map

@@ -3,7 +3,7 @@ use crate::util::{find_definition, forget_labels};
 
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
-use metacat::check::{check_trace, type_term};
+use metacat::check::{check_trace, raw_type_term, type_term};
 use metacat::syntax::{Declaration, TheoryBundle};
 use metacat::theory::OperationKey;
 use std::path::PathBuf;
@@ -43,6 +43,7 @@ enum InspectTarget {
 #[derive(ValueEnum, Clone, Debug)]
 enum InspectArrowStage {
     Term,
+    RawTypeMap,
     TypeMap,
     Ssa,
 }
@@ -131,6 +132,24 @@ fn inspect_arrow(
                 InspectFormat::Dot => print_dot_hypergraph(&term),
             }
         }
+        InspectArrowStage::RawTypeMap => {
+            let source =
+                forget_labels(try_interpret(&bundle.object_theory, &declaration.source_map)?);
+            let target =
+                forget_labels(try_interpret(&bundle.object_theory, &declaration.target_map)?);
+            let (raw_type_map, offset, size) =
+                raw_type_term(&bundle.arrow_theory, source, target, &mut term)?;
+
+            match format {
+                InspectFormat::Text => {
+                    println!();
+                    println!("raw-type-map:");
+                    println!("  proof node range before quotient: {offset}..{}", offset + size);
+                    print_open_hypergraph(&raw_type_map);
+                }
+                InspectFormat::Dot => print_dot_hypergraph(&raw_type_map),
+            }
+        }
         InspectArrowStage::TypeMap => {
             let source =
                 forget_labels(try_interpret(&bundle.object_theory, &declaration.source_map)?);
@@ -153,7 +172,7 @@ fn inspect_arrow(
         InspectArrowStage::Ssa => {
             if format == InspectFormat::Dot {
                 return Err(anyhow::anyhow!(
-                    "--format dot is only available for --stage term and --stage type-map"
+                    "--format dot is only available for --stage term, --stage raw-type-map, and --stage type-map"
                 ));
             }
 
