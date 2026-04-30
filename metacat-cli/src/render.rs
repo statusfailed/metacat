@@ -2,7 +2,7 @@ use metacat::check::{RawTypeTerm, TypeMapComponent};
 use metacat::theory::OperationKey;
 use open_hypergraphs::lax::OpenHypergraph;
 
-pub fn print_dot_hypergraph<O, A>(f: &OpenHypergraph<O, A>)
+pub fn print_dot_hypergraph<O, A>(f: &OpenHypergraph<O, A>, node_labels: Option<&[String]>)
 where
     O: Clone + PartialEq + std::fmt::Debug,
     A: Clone + PartialEq + std::fmt::Display + std::fmt::Debug,
@@ -10,15 +10,29 @@ where
     use graphviz_rust::printer::{DotPrinter, PrinterContext};
     use open_hypergraphs_dot::{Options, generate_dot_with};
 
+    if let Some(labels) = node_labels {
+        let graph = f.clone().with_nodes(|nodes| (0..nodes.len()).collect());
+        if let Some(graph) = graph {
+            let labels = labels.to_vec();
+            let mut opts = Options::default();
+            opts.edge_label = Box::new(|edge| format!("{edge}"));
+            opts.node_label =
+                Box::new(move |node: &usize| labels.get(*node).cloned().unwrap_or_default());
+            let graph = generate_dot_with(&graph, &opts);
+            let mut ctx = PrinterContext::default();
+            println!("{}", graph.print(&mut ctx));
+            return;
+        }
+    }
+
     let mut opts = Options::default();
     opts.edge_label = Box::new(|edge| format!("{edge}"));
-
     let graph = generate_dot_with(f, &opts);
     let mut ctx = PrinterContext::default();
     println!("{}", graph.print(&mut ctx));
 }
 
-pub fn print_dot_raw_type_map<O>(raw: &RawTypeTerm<O>)
+pub fn print_dot_raw_type_map<O>(raw: &RawTypeTerm<O>, node_labels: Option<&[String]>)
 where
     O: Clone + PartialEq + std::fmt::Display + std::fmt::Debug,
 {
@@ -29,9 +43,15 @@ where
     println!("  edge[fontcolor=\"white\" color=\"white\" arrowhead=none]");
     println!();
 
-    print_dot_cluster("source+", "source", &raw.graph, &raw.source);
-    print_dot_cluster("proof type-map", "proof", &raw.graph, &raw.proof);
-    print_dot_cluster("target-", "target", &raw.graph, &raw.target);
+    print_dot_cluster("source+", "source", &raw.graph, &raw.source, node_labels);
+    print_dot_cluster(
+        "proof type-map",
+        "proof",
+        &raw.graph,
+        &raw.proof,
+        node_labels,
+    );
+    print_dot_cluster("target-", "target", &raw.graph, &raw.target, node_labels);
 
     println!(
         "  sources[label=\"{{ {{}} | {{ {} }} }}\" shape=record style=invisible rank=source]",
@@ -78,6 +98,7 @@ fn print_dot_cluster<O>(
     name: &str,
     graph: &OpenHypergraph<(), metacat::dual::Dual<O>>,
     component: &TypeMapComponent,
+    node_labels: Option<&[String]>,
 ) where
     O: Clone + PartialEq + std::fmt::Display + std::fmt::Debug,
 {
@@ -88,7 +109,14 @@ fn print_dot_cluster<O>(
     println!("    style=\"dashed\"");
 
     for i in component.node_range.clone() {
-        println!("    n_{i}[shape=point xlabel=\"()\"]");
+        let label = node_labels
+            .and_then(|labels| labels.get(i))
+            .cloned()
+            .unwrap_or_else(|| "()".to_string());
+        println!(
+            "    n_{i}[shape=point xlabel=\"{}\"]",
+            escape_dot_string(&label)
+        );
     }
 
     for i in component.edge_range.clone() {

@@ -5,9 +5,11 @@ use crate::util::{find_definition, forget_labels};
 
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
-use metacat::check::{check_trace, raw_type_term, type_term};
+use metacat::check::{check_trace, eval_type, raw_type_term, type_term};
+use metacat::dual::Dual;
 use metacat::syntax::{Declaration, TheoryBundle};
 use metacat::theory::OperationKey;
+use open_hypergraphs::lax::OpenHypergraph;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -130,9 +132,11 @@ fn inspect_arrow(
                 println!("term:");
                 print_open_hypergraph(&term);
             }
-            InspectFormat::Dot => print_dot_hypergraph(&term),
+            InspectFormat::Dot => print_dot_hypergraph(&term, None),
         },
         InspectArrowStage::RawTypeMap => {
+            let coarity =
+                |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
             let source = forget_labels(try_interpret(
                 &bundle.object_theory,
                 &declaration.source_map,
@@ -154,10 +158,15 @@ fn inspect_arrow(
                     );
                     print_open_hypergraph(&raw_type_map.graph);
                 }
-                InspectFormat::Dot => print_dot_raw_type_map(&raw_type_map),
+                InspectFormat::Dot => {
+                    let labels = raw_type_map_node_labels(&raw_type_map.graph, &coarity);
+                    print_dot_raw_type_map(&raw_type_map, labels.as_deref());
+                }
             }
         }
         InspectArrowStage::TypeMap => {
+            let coarity =
+                |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
             let source = forget_labels(try_interpret(
                 &bundle.object_theory,
                 &declaration.source_map,
@@ -177,7 +186,10 @@ fn inspect_arrow(
                     println!("  proof node type indices: {:?}", node_type_indices);
                     print_open_hypergraph(&type_map);
                 }
-                InspectFormat::Dot => print_dot_hypergraph(&type_map),
+                InspectFormat::Dot => {
+                    let labels = type_map_node_labels(&type_map, &coarity);
+                    print_dot_hypergraph(&type_map, labels.as_deref());
+                }
             }
         }
         InspectArrowStage::Ssa => {
@@ -206,6 +218,34 @@ fn inspect_arrow(
     }
 
     Ok(())
+}
+
+fn type_map_node_labels(
+    type_map: &OpenHypergraph<(), Dual<OperationKey>>,
+    coarity: &dyn Fn(&OperationKey) -> usize,
+) -> Option<Vec<String>> {
+    eval_type(type_map.clone()).ok().map(|trees| {
+        trees
+            .iter()
+            .map(|tree| tree.pretty(Some(&coarity)))
+            .collect()
+    })
+}
+
+fn raw_type_map_node_labels(
+    raw_type_map: &OpenHypergraph<(), Dual<OperationKey>>,
+    coarity: &dyn Fn(&OperationKey) -> usize,
+) -> Option<Vec<String>> {
+    let mut quotient_graph = raw_type_map.clone();
+    let quotient = quotient_graph.quotient().ok()?;
+    let quotient_labels = type_map_node_labels(&quotient_graph, coarity)?;
+    Some(
+        quotient
+            .table
+            .iter()
+            .map(|node| quotient_labels.get(*node).cloned().unwrap_or_default())
+            .collect(),
+    )
 }
 
 fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()> {
