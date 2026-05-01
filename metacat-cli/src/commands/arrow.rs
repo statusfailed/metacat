@@ -1,7 +1,6 @@
-use crate::util::{DeclarationTermMode, declaration_check_input, forget_labels};
-
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::{Operation, try_interpret};
+use metacat::build::{DeclarationTermMode, declaration_check_input, forget_labels};
 use metacat::check::check;
 use metacat::syntax::TheoryBundle;
 use metacat::theory::OperationKey;

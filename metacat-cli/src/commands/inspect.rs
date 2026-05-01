@@ -2,13 +2,12 @@ use crate::render::{
     print_dot_hypergraph, print_dot_hypergraph_with_edge_labels, print_dot_raw_type_map,
     print_open_hypergraph, print_state,
 };
-use crate::util::{
+use clap::{Args, Subcommand, ValueEnum};
+use hexpr::try_interpret;
+use metacat::build::{
     DeclarationTermMode, declaration_check_input, find_arrow_declaration, find_definition,
     forget_labels,
 };
-
-use clap::{Args, Subcommand, ValueEnum};
-use hexpr::try_interpret;
 use metacat::check::{CheckInput, RawTypeTerm, eval_type, prepare_check};
 use metacat::dual;
 use metacat::dual::Dual;

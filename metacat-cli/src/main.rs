@@ -1,6 +1,5 @@
 mod commands;
 mod render;
-mod util;
 
 use clap::Parser;
 use commands::Command;

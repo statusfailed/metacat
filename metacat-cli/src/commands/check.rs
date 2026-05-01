@@ -1,7 +1,6 @@
-use crate::util::{DeclarationTermMode, declaration_check_input};
-
 use clap::Args;
 use colored::*;
+use metacat::build::{DeclarationTermMode, declaration_check_input};
 use metacat::check::check;
 use metacat::syntax::TheoryBundle;
 use std::path::PathBuf;
