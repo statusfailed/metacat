@@ -99,8 +99,8 @@ pub fn check_trace<O: Eq + Clone + Debug + std::fmt::Display>(
 ) -> Result<CheckTrace<O>, Error<O>> {
     let term = arrow.clone();
     let (type_term, quotient, node_type_indices) = type_term(theory, source, target, arrow)?;
-    let ssa = ssa(type_term.clone().to_strict())?;
     let (result, eval_steps) = eval_type(type_term.clone())?;
+    let ssa = eval_steps.iter().map(|step| step.ssa.clone()).collect();
     let node_types = node_type_indices
         .iter()
         .map(|i| result[*i].clone())
