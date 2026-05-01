@@ -6,12 +6,13 @@ use crate::util::{find_arrow_declaration, find_definition, forget_labels, inline
 
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
-use metacat::check::{check, check_trace, eval_type, proof_type_map, raw_type_term, type_term};
+use metacat::check::{check, eval_type, proof_type_map, raw_type_term, type_term};
 use metacat::dual;
 use metacat::dual::Dual;
 use metacat::syntax::{Declaration, TheoryBundle};
 use metacat::theory::OperationKey;
 use open_hypergraphs::lax::OpenHypergraph;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 #[derive(Args)]
@@ -597,9 +598,7 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
     }
 
     let bundle = TheoryBundle::from_file(path)?;
-    let declaration = find_definition(&bundle, &name)?;
-    let def_hexpr = declaration.definition.as_ref().unwrap();
-    let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
+    let declaration = find_arrow_declaration(&bundle, &name)?;
     let source = forget_labels(try_interpret(
         &bundle.object_theory,
         &declaration.source_map,
@@ -608,8 +607,8 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
         &bundle.object_theory,
         &declaration.target_map,
     )?);
+    let mut term = declaration_term(&bundle, declaration, &source, &target)?;
 
-    let trace = check_trace(&bundle.arrow_theory, source, target, &mut term)?;
     let coarity =
         |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
 
@@ -617,23 +616,53 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
         "{} : {} -> {}",
         declaration.name, declaration.source_map, declaration.target_map
     );
-    println!("body: {def_hexpr}");
-    println!();
-    println!("term:");
-    print_open_hypergraph(&trace.term);
-    println!();
-    println!("type-term:");
-    println!("  quotient: {:?}", trace.quotient);
-    println!("  proof node type indices: {:?}", trace.node_type_indices);
-    print_open_hypergraph(&trace.type_term);
-    println!();
-    println!("ssa:");
-    for value in &trace.ssa {
-        println!("  {value}");
+    match &declaration.definition {
+        Some(definition) => println!("body: {definition}"),
+        None => println!("body: <primitive>"),
     }
     println!();
+    println!("term:");
+    print_open_hypergraph(&term);
+
+    println!();
+    println!("type-term:");
+    let (type_term, quotient, node_type_indices) =
+        match type_term(&bundle.arrow_theory, source, target, &mut term) {
+            Ok(result) => result,
+            Err(error) => {
+                println!("  failed while building type-term: {error}");
+                return Err(error.into());
+            }
+        };
+    println!("  quotient: {:?}", quotient);
+    println!("  proof node type indices: {:?}", node_type_indices);
+    print_open_hypergraph(&type_term);
+
+    println!();
+    println!("ssa:");
+    match metacat::ssa::ssa(type_term.clone().to_strict()) {
+        Ok(ssa) => {
+            for value in &ssa {
+                println!("  {value}");
+            }
+        }
+        Err(error) => {
+            println!("  failed: {error}");
+            print_ssa_debug(&type_term);
+            return Err(error.into());
+        }
+    };
+
+    println!();
     println!("eval:");
-    for (i, step) in trace.eval_steps.iter().enumerate() {
+    let (result, eval_steps) = match metacat::check::eval_type_trace(type_term.clone()) {
+        Ok(result) => result,
+        Err(error) => {
+            println!("  failed while evaluating type-term: {error}");
+            return Err(error.into());
+        }
+    };
+    for (i, step) in eval_steps.iter().enumerate() {
         let inputs: Vec<String> = step
             .inputs
             .iter()
@@ -645,9 +674,147 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
     }
     println!();
     println!("node types:");
-    for (i, ty) in trace.node_types.iter().enumerate() {
-        println!("  node {i}: {}", ty.pretty(Some(&coarity)));
+    for (i, node_type_index) in node_type_indices.iter().enumerate() {
+        match result.get(*node_type_index) {
+            Some(ty) => println!("  node {i}: {}", ty.pretty(Some(&coarity))),
+            None => println!("  node {i}: <missing result at index {node_type_index}>"),
+        }
     }
 
     Ok(())
+}
+
+fn declaration_term(
+    bundle: &TheoryBundle,
+    declaration: &Declaration,
+    source: &OpenHypergraph<(), OperationKey>,
+    target: &OpenHypergraph<(), OperationKey>,
+) -> anyhow::Result<OpenHypergraph<(), OperationKey>> {
+    if let Some(definition) = &declaration.definition {
+        return Ok(forget_labels(try_interpret(
+            &bundle.arrow_theory,
+            definition,
+        )?));
+    }
+
+    let key = bundle
+        .arrow_theory
+        .get_operation_key(declaration.name.as_str())
+        .ok_or_else(|| anyhow::anyhow!("arrow '{}' not found in arrow theory", declaration.name))?;
+    Ok(OpenHypergraph::singleton(
+        key,
+        vec![(); source.targets.len()],
+        vec![(); target.targets.len()],
+    ))
+}
+
+fn print_ssa_debug(type_term: &OpenHypergraph<(), Dual<OperationKey>>) {
+    let (layers, unvisited) = metacat::ssa::parallel_ssa_cyclic(type_term.clone().to_strict());
+    let scheduled: HashSet<usize> = layers
+        .iter()
+        .flatten()
+        .map(|value| value.edge_id.0)
+        .collect();
+    let blocked: Vec<usize> = (0..type_term.hypergraph.edges.len())
+        .filter(|edge_id| !scheduled.contains(edge_id))
+        .collect();
+
+    println!("  partial layers:");
+    if layers.is_empty() {
+        println!("    <none>");
+    }
+    for (i, layer) in layers.iter().enumerate() {
+        println!("    layer {i}:");
+        for value in layer {
+            println!("      {value}");
+        }
+    }
+
+    println!("  blocked edges:");
+    if blocked.is_empty() {
+        println!("    <none>");
+    }
+    for edge_id in blocked {
+        let edge = &type_term.hypergraph.edges[edge_id];
+        let adjacency = &type_term.hypergraph.adjacency[edge_id];
+        let sources: Vec<String> = adjacency
+            .sources
+            .iter()
+            .map(|node| format!("v{}", node.0))
+            .collect();
+        let targets: Vec<String> = adjacency
+            .targets
+            .iter()
+            .map(|node| format!("v{}", node.0))
+            .collect();
+        println!(
+            "    e{edge_id}: [{}] --{}--> [{}]",
+            sources.join(", "),
+            edge,
+            targets.join(", ")
+        );
+    }
+
+    let dependencies = edge_dependencies(type_term);
+    println!("  edge dependencies:");
+    if dependencies.is_empty() {
+        println!("    <none>");
+    }
+    for (edge_id, dependency_id, via_nodes) in &dependencies {
+        println!(
+            "    e{edge_id} depends on e{dependency_id} via {}",
+            via_nodes.join(", ")
+        );
+    }
+
+    let mut mutual_dependencies = Vec::new();
+    for (edge_id, dependency_id, via_nodes) in &dependencies {
+        if dependencies
+            .iter()
+            .any(|(other_edge, other_dependency, _)| {
+                other_edge == dependency_id && other_dependency == edge_id
+            })
+        {
+            mutual_dependencies.push((*edge_id, *dependency_id, via_nodes.clone()));
+        }
+    }
+    println!("  cycle candidates:");
+    if mutual_dependencies.is_empty() {
+        println!("    <none detected from direct edge dependencies>");
+    }
+    for (edge_id, dependency_id, via_nodes) in mutual_dependencies {
+        println!(
+            "    e{edge_id} <-> e{dependency_id} via {}",
+            via_nodes.join(", ")
+        );
+    }
+
+    println!("  unvisited node flags: {:?}", unvisited);
+}
+
+fn edge_dependencies(
+    graph: &OpenHypergraph<(), Dual<OperationKey>>,
+) -> Vec<(usize, usize, Vec<String>)> {
+    let mut dependencies = Vec::new();
+
+    for (edge_id, adjacency) in graph.hypergraph.adjacency.iter().enumerate() {
+        for (dependency_id, dependency_adjacency) in graph.hypergraph.adjacency.iter().enumerate() {
+            if edge_id == dependency_id {
+                continue;
+            }
+
+            let via_nodes: Vec<String> = adjacency
+                .sources
+                .iter()
+                .filter(|source| dependency_adjacency.targets.contains(source))
+                .map(|node| format!("v{}", node.0))
+                .collect();
+
+            if !via_nodes.is_empty() {
+                dependencies.push((edge_id, dependency_id, via_nodes));
+            }
+        }
+    }
+
+    dependencies
 }
