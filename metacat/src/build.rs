@@ -15,8 +15,6 @@ pub enum Error {
     MissingDefinitionBody(String),
     #[error("arrow '{0}' not found in arrow theory")]
     MissingArrow(String),
-    #[error("definition '{0}' not found")]
-    MissingDefinition(String),
     #[error("arrow declaration '{0}' not found")]
     MissingArrowDeclaration(String),
     #[error("invalid quotient before inlining: {0:?}")]
@@ -40,6 +38,7 @@ pub enum DeclarationTermMode {
     Body,
     InlinedBody,
     PrimitiveOrBody,
+    PrimitiveOrInlinedBody,
 }
 
 pub fn declaration_check_input(
@@ -62,17 +61,6 @@ pub fn declaration_check_input(
         target,
         term,
     })
-}
-
-pub fn find_arrow_definition<'a>(
-    bundle: &'a TheoryBundle,
-    name: &str,
-) -> Result<&'a Declaration, Error> {
-    bundle
-        .definitions
-        .values()
-        .find(|declaration| declaration.name.as_str() == name)
-        .ok_or_else(|| Error::MissingDefinition(name.to_string()))
 }
 
 pub fn find_arrow_declaration<'a>(
@@ -101,11 +89,13 @@ pub fn declaration_term(
         | (Some(definition), DeclarationTermMode::PrimitiveOrBody) => Ok(forget_labels(
             try_interpret(&bundle.arrow_theory, definition)?,
         )),
-        (Some(definition), DeclarationTermMode::InlinedBody) => {
+        (Some(definition), DeclarationTermMode::InlinedBody)
+        | (Some(definition), DeclarationTermMode::PrimitiveOrInlinedBody) => {
             let term = forget_labels(try_interpret(&bundle.arrow_theory, definition)?);
             inline_definitions(bundle, term)
         }
-        (None, DeclarationTermMode::PrimitiveOrBody) => {
+        (None, DeclarationTermMode::PrimitiveOrBody)
+        | (None, DeclarationTermMode::PrimitiveOrInlinedBody) => {
             let key = bundle
                 .arrow_theory
                 .get_operation_key(declaration.name.as_str())

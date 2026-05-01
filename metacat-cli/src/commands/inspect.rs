@@ -5,8 +5,7 @@ use crate::render::{
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
 use metacat::build::{
-    DeclarationTermMode, declaration_check_input, find_arrow_declaration, find_arrow_definition,
-    forget_labels,
+    DeclarationTermMode, declaration_check_input, find_arrow_declaration, forget_labels,
 };
 use metacat::check::{CheckInput, RawTypeTerm, eval_type, prepare_check};
 use metacat::dual;
@@ -127,16 +126,18 @@ fn inspect_arrow(
         return inspect_arrow_build_match(&bundle, declaration, format);
     };
 
-    let declaration = find_arrow_definition(&bundle, &name)?;
-    let def_hexpr = declaration.definition.as_ref().unwrap();
-    let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
+    let declaration = find_arrow_declaration(&bundle, &name)?;
+    let def_hexpr = declaration.definition.as_ref();
 
     if format == InspectFormat::Text {
         println!(
             "{} : {} -> {}",
             declaration.name, declaration.source_map, declaration.target_map
         );
-        println!("body: {def_hexpr}");
+        match def_hexpr {
+            Some(definition) => println!("body: {definition}"),
+            None => println!("body: <primitive>"),
+        }
     }
 
     match stage {
@@ -165,30 +166,43 @@ fn inspect_arrow(
                 }
             }
         }
-        InspectArrowStage::Term => match format {
-            InspectFormat::Text => {
-                term.quotient()
-                    .map_err(|quotient| anyhow::anyhow!("invalid term quotient: {:?}", quotient))?;
-                println!();
-                println!("term:");
-                print_open_hypergraph(&term);
+        InspectArrowStage::Term => {
+            let definition = def_hexpr.ok_or_else(|| {
+                anyhow::anyhow!("--stage term requires a def-arrow body for '{}'", name)
+            })?;
+            let mut term = forget_labels(try_interpret(&bundle.arrow_theory, definition)?);
+
+            match format {
+                InspectFormat::Text => {
+                    term.quotient().map_err(|quotient| {
+                        anyhow::anyhow!("invalid term quotient: {:?}", quotient)
+                    })?;
+                    println!();
+                    println!("term:");
+                    print_open_hypergraph(&term);
+                }
+                InspectFormat::Dot => {
+                    term.quotient().map_err(|quotient| {
+                        anyhow::anyhow!("invalid term quotient: {:?}", quotient)
+                    })?;
+                    let labels = term_node_labels(&bundle, declaration, &term);
+                    print_dot_hypergraph(&term, labels.as_deref());
+                }
+                InspectFormat::Formula => {
+                    return Err(anyhow::anyhow!(
+                        "--format formula is only available for --stage type-term and --stage proof-type-map"
+                    ));
+                }
             }
-            InspectFormat::Dot => {
-                term.quotient()
-                    .map_err(|quotient| anyhow::anyhow!("invalid term quotient: {:?}", quotient))?;
-                let labels = term_node_labels(&bundle, declaration, &term);
-                print_dot_hypergraph(&term, labels.as_deref());
-            }
-            InspectFormat::Formula => {
-                return Err(anyhow::anyhow!(
-                    "--format formula is only available for --stage type-term and --stage proof-type-map"
-                ));
-            }
-        },
+        }
         InspectArrowStage::RawTypeMap => {
             let coarity =
                 |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
-            let input = declaration_check_input(&bundle, declaration, DeclarationTermMode::Body)?;
+            let input = declaration_check_input(
+                &bundle,
+                declaration,
+                DeclarationTermMode::PrimitiveOrInlinedBody,
+            )?;
             let prepared = prepare_check(&bundle.arrow_theory, input)?;
 
             match format {
@@ -217,9 +231,18 @@ fn inspect_arrow(
             }
         }
         InspectArrowStage::ProofTypeMap => {
-            let input =
-                declaration_check_input(&bundle, declaration, DeclarationTermMode::InlinedBody)?;
-            term = input.term.clone();
+            if def_hexpr.is_none() {
+                return Err(anyhow::anyhow!(
+                    "--stage proof-type-map requires a def-arrow body for '{}'",
+                    name
+                ));
+            }
+            let input = declaration_check_input(
+                &bundle,
+                declaration,
+                DeclarationTermMode::PrimitiveOrInlinedBody,
+            )?;
+            let term = input.term.clone();
             let prepared = prepare_check(&bundle.arrow_theory, input)?;
 
             let coarity =
@@ -247,9 +270,12 @@ fn inspect_arrow(
             }
         }
         InspectArrowStage::TypeTerm => {
-            let input =
-                declaration_check_input(&bundle, declaration, DeclarationTermMode::InlinedBody)?;
-            term = input.term.clone();
+            let input = declaration_check_input(
+                &bundle,
+                declaration,
+                DeclarationTermMode::PrimitiveOrInlinedBody,
+            )?;
+            let term = input.term.clone();
             let prepared = prepare_check(&bundle.arrow_theory, input)?;
 
             let coarity =
@@ -285,7 +311,11 @@ fn inspect_arrow(
                 return Err(anyhow::anyhow!("--stage ssa only supports --format text"));
             }
 
-            let input = declaration_check_input(&bundle, declaration, DeclarationTermMode::Body)?;
+            let input = declaration_check_input(
+                &bundle,
+                declaration,
+                DeclarationTermMode::PrimitiveOrInlinedBody,
+            )?;
             let prepared = prepare_check(&bundle.arrow_theory, input)?;
 
             println!();
@@ -596,8 +626,11 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
 
     let bundle = TheoryBundle::from_file(path)?;
     let declaration = find_arrow_declaration(&bundle, &name)?;
-    let input =
-        declaration_check_input(&bundle, declaration, DeclarationTermMode::PrimitiveOrBody)?;
+    let input = declaration_check_input(
+        &bundle,
+        declaration,
+        DeclarationTermMode::PrimitiveOrInlinedBody,
+    )?;
 
     let coarity =
         |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
