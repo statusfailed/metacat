@@ -10,7 +10,8 @@
   }
 )
 
-(def-arrow circuit2 : [x y] -> ([x y] add [z.x y z]) =
+# this makes SSA decomposition fail because of loop
+(def-arrow circuit-with-loop : [x y] -> ([x y] add [z.x y z]) =
   {[x y.]
     [.x]
     [.y]
