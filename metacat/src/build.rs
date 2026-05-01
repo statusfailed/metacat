@@ -64,7 +64,10 @@ pub fn declaration_check_input(
     })
 }
 
-pub fn find_definition<'a>(bundle: &'a TheoryBundle, name: &str) -> Result<&'a Declaration, Error> {
+pub fn find_arrow_definition<'a>(
+    bundle: &'a TheoryBundle,
+    name: &str,
+) -> Result<&'a Declaration, Error> {
     bundle
         .definitions
         .values()

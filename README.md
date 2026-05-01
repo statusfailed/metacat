@@ -15,13 +15,20 @@ for example:
 
 ```text
 > metacat check examples/fol.hex
-[✓] p1 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> |-)}
-[✓] p2 : wff -> ([ph . ph ph] -> [i . ph i] -> |-)
+[✓] ax5d : {[x ph ps . ] ([ . ph] wff) ([ . ps] wff)} -> {[x ph ps . ] ([ . x ps] forall [aps . ]) ([ . ps aps] -> [inner . ]) ([ . ph inner] -> |-)}
 [✓] win : {wff wff} -> (-> -. wff)
+[✓] id : wff -> ([x . x x] -> |-)
+[✓] win-shared : {wff} -> ([x . x x] -> -. wff)
+[✓] p2 : wff -> ([ph . ph ph] -> [i . ph i] -> |-)
 [✓] p3 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> [lhs . ]) ([ . ph id] -> [y . y id] -> [rhs . ]) ([ . lhs rhs] -> |-)}
 [✓] p4 : wff -> {[ph . ] ([ . ph ph] -> [id . ph id] -> [x . x id] -> |-)}
-[✓] id : wff -> ([x . x x] -> |-)
+[✓] p1 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> |-)}
+[✓] id-inline : wff -> ([x . x x] -> |-)
+[✓] a1i : {[ph ps . ] ([ . ph] wff) ([ . ps] wff) ([ . ph] |-)} -> ([ph ps . ps ph] -> |-)
+[✓] gen2 : {[x y ph . ] ([ . x] setvar) ([ . y] setvar) ([ . ph] wff) ([ . ph] |-)} -> {[x y ph . ] ([ . y ph] forall [yph . ]) ([ . x yph] forall |-)}
 ```
+
+The output order is not significant.
 
 # language
 
@@ -67,6 +74,28 @@ We can then write a simple proof that negation of implication is also well-forme
 
 See [./examples/fol.hex](./examples/fol.hex) for an example of declaring axioms of propositional logic,
 and using them to prove the identity theorem `|- (φ → φ)`.
+
+# arrows
+
+The `arrow` command prints or renders a named `def-arrow`.
+
+Print the definition body as a hexpr:
+
+```sh
+metacat arrow hexpr examples/fol.hex win
+```
+
+Render the definition body to SVG:
+
+```sh
+metacat arrow svg examples/fol.hex win > /tmp/win.svg
+```
+
+Use `--orientation tb` for a top-to-bottom layout:
+
+```sh
+metacat arrow svg examples/fol.hex win --orientation tb > /tmp/win.svg
+```
 
 # inspection
 

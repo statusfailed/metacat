@@ -5,7 +5,7 @@ use crate::render::{
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::try_interpret;
 use metacat::build::{
-    DeclarationTermMode, declaration_check_input, find_arrow_declaration, find_definition,
+    DeclarationTermMode, declaration_check_input, find_arrow_declaration, find_arrow_definition,
     forget_labels,
 };
 use metacat::check::{CheckInput, RawTypeTerm, eval_type, prepare_check};
@@ -127,7 +127,7 @@ fn inspect_arrow(
         return inspect_arrow_build_match(&bundle, declaration, format);
     };
 
-    let declaration = find_definition(&bundle, &name)?;
+    let declaration = find_arrow_definition(&bundle, &name)?;
     let def_hexpr = declaration.definition.as_ref().unwrap();
     let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
 
