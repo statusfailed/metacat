@@ -52,11 +52,8 @@ enum InspectArrowStage {
     Source,
     Target,
     RawTypeMap,
-    TypeMap,
     TypeTerm,
-    ExpandedTypeTerm,
     ProofTypeMap,
-    ExpandedTypeMap,
     Ssa,
 }
 
@@ -181,7 +178,7 @@ fn inspect_arrow(
             }
             InspectFormat::Formula => {
                 return Err(anyhow::anyhow!(
-                    "--format formula is only available for --stage type-term, --stage expanded-type-term, --stage proof-type-map, --stage type-map, and --stage expanded-type-map"
+                    "--format formula is only available for --stage type-term and --stage proof-type-map"
                 ));
             }
         },
@@ -215,15 +212,12 @@ fn inspect_arrow(
                 }
                 InspectFormat::Formula => {
                     return Err(anyhow::anyhow!(
-                        "--format formula is only available for --stage type-term, --stage expanded-type-term, --stage proof-type-map, --stage type-map, and --stage expanded-type-map"
+                        "--format formula is only available for --stage type-term and --stage proof-type-map"
                     ));
                 }
             }
         }
-        InspectArrowStage::TypeMap
-        | InspectArrowStage::ProofTypeMap
-        | InspectArrowStage::ExpandedTypeMap => {
-            let explicit_expanded = matches!(&stage, InspectArrowStage::ExpandedTypeMap);
+        InspectArrowStage::ProofTypeMap => {
             term = inline_definitions(&bundle, term)?;
 
             let coarity =
@@ -233,11 +227,7 @@ fn inspect_arrow(
             match format {
                 InspectFormat::Text => {
                     println!();
-                    if explicit_expanded {
-                        println!("expanded-type-map:");
-                    } else {
-                        println!("proof-type-map:");
-                    }
+                    println!("proof-type-map:");
                     print_open_hypergraph(&type_map);
                 }
                 InspectFormat::Dot => {
@@ -255,8 +245,7 @@ fn inspect_arrow(
                 }
             }
         }
-        InspectArrowStage::TypeTerm | InspectArrowStage::ExpandedTypeTerm => {
-            let explicit_expanded = matches!(&stage, InspectArrowStage::ExpandedTypeTerm);
+        InspectArrowStage::TypeTerm => {
             term = inline_definitions(&bundle, term)?;
 
             let coarity =
@@ -279,11 +268,7 @@ fn inspect_arrow(
             match format {
                 InspectFormat::Text => {
                     println!();
-                    if explicit_expanded {
-                        println!("expanded-type-term:");
-                    } else {
-                        println!("type-term:");
-                    }
+                    println!("type-term:");
                     println!("  quotient: {:?}", quotient);
                     println!("  proof node type indices: {:?}", node_type_indices);
                     print_open_hypergraph(&type_term);

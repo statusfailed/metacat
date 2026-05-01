@@ -91,9 +91,7 @@ Inspection stages correspond to different points in the checker pipeline:
   their match/build interfaces, without adding the declaration source and
   target checks. The proof body is recursively expanded through `def-arrow`s
   first; every remaining primitive `arrow` is expanded into its match/build
-  type-map interface. `type-map` is accepted as a shorter alias for this view.
-- `expanded-type-term` is accepted as an explicit alias for `type-term`.
-- `expanded-type-map` is accepted as an explicit alias for `proof-type-map`.
+  type-map interface.
 - `ssa` is the topological order used to evaluate the checker type term. It is
   a textual execution order, not a separate hypergraph.
 
@@ -132,20 +130,6 @@ Inspect only the proof body's type map:
 
 ```sh
 metacat inspect arrow examples/fol.hex win --stage proof-type-map
-```
-
-The checker type term expands nested `def-arrow` implementations by default.
-`expanded-type-term` is accepted as an explicit alias:
-
-```sh
-metacat inspect arrow examples/expressions.hex assign-x-sum-times-one --stage expanded-type-term
-```
-
-The proof type map also expands nested `def-arrow` implementations by default.
-`expanded-type-map` is accepted as an explicit alias:
-
-```sh
-metacat inspect arrow examples/expressions.hex assign-x-sum-times-one --stage expanded-type-map
 ```
 
 Inspect the full checker chain before the final quotient pass:
@@ -205,9 +189,9 @@ metacat inspect arrow examples/fol.hex win --stage type-term --format dot \
   | dot -Tsvg > /tmp/win-type-term.svg
 ```
 
-DOT output is available for `term`, `raw-type-map`, `type-term`,
-`expanded-type-term`, `proof-type-map`, `type-map`, and `expanded-type-map`.
-The `ssa` stage is a textual linearization rather than a hypergraph.
+DOT output is available for `source`, `target`, `term`, `raw-type-map`,
+`type-term`, and `proof-type-map`. The `ssa` stage is a textual linearization
+rather than a hypergraph.
 
 # tooling
 
