@@ -1,5 +1,6 @@
 use hexpr::Operation;
 use hexpr::try_interpret;
+use metacat::check::CheckInput;
 use metacat::definition::Def;
 use metacat::definition::inline::inline;
 use metacat::syntax::{Declaration, TheoryBundle};
@@ -36,6 +37,69 @@ pub fn forget_labels<T, A>(
     f: open_hypergraphs::lax::OpenHypergraph<T, A>,
 ) -> open_hypergraphs::lax::OpenHypergraph<(), A> {
     f.map_nodes(|_| ())
+}
+
+pub enum DeclarationTermMode {
+    Body,
+    InlinedBody,
+    PrimitiveOrBody,
+}
+
+pub fn declaration_check_input(
+    bundle: &TheoryBundle,
+    declaration: &Declaration,
+    mode: DeclarationTermMode,
+) -> anyhow::Result<CheckInput<OperationKey>> {
+    let source = forget_labels(try_interpret(
+        &bundle.object_theory,
+        &declaration.source_map,
+    )?);
+    let target = forget_labels(try_interpret(
+        &bundle.object_theory,
+        &declaration.target_map,
+    )?);
+    let term = declaration_term(bundle, declaration, &source, &target, mode)?;
+
+    Ok(CheckInput {
+        source,
+        target,
+        term,
+    })
+}
+
+pub fn declaration_term(
+    bundle: &TheoryBundle,
+    declaration: &Declaration,
+    source: &OpenHypergraph<(), OperationKey>,
+    target: &OpenHypergraph<(), OperationKey>,
+    mode: DeclarationTermMode,
+) -> anyhow::Result<OpenHypergraph<(), OperationKey>> {
+    match (&declaration.definition, mode) {
+        (Some(definition), DeclarationTermMode::Body)
+        | (Some(definition), DeclarationTermMode::PrimitiveOrBody) => Ok(forget_labels(
+            try_interpret(&bundle.arrow_theory, definition)?,
+        )),
+        (Some(definition), DeclarationTermMode::InlinedBody) => {
+            let term = forget_labels(try_interpret(&bundle.arrow_theory, definition)?);
+            inline_definitions(bundle, term)
+        }
+        (None, DeclarationTermMode::PrimitiveOrBody) => {
+            let key = bundle
+                .arrow_theory
+                .get_operation_key(declaration.name.as_str())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("arrow '{}' not found in arrow theory", declaration.name)
+                })?;
+            Ok(OpenHypergraph::singleton(
+                key,
+                vec![(); source.targets.len()],
+                vec![(); target.targets.len()],
+            ))
+        }
+        (None, DeclarationTermMode::Body) | (None, DeclarationTermMode::InlinedBody) => Err(
+            anyhow::anyhow!("declaration '{}' has no definition body", declaration.name),
+        ),
+    }
 }
 
 pub fn inline_definitions(

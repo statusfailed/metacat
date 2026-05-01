@@ -46,11 +46,30 @@ pub struct EvalStep<O> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CheckTrace<O> {
+pub struct CheckInput<O> {
+    pub source: OpenHypergraph<(), O>,
+    pub target: OpenHypergraph<(), O>,
     pub term: OpenHypergraph<(), OperationKey>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedCheck<O> {
+    pub input: CheckInput<O>,
+    pub proof_type_map: OpenHypergraph<(), Dual<O>>,
+    pub raw_type_term: RawTypeTerm<O>,
     pub type_term: OpenHypergraph<(), Dual<O>>,
     pub quotient: FiniteFunction,
     pub node_type_indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CheckResult<O> {
+    pub node_types: Vec<Tree<(), O>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CheckTrace<O> {
+    pub prepared: PreparedCheck<O>,
     pub ssa: Vec<SSA<(), Dual<O>>>,
     pub eval_steps: Vec<EvalStep<O>>,
     pub result: Vec<Tree<(), O>>,
@@ -84,33 +103,62 @@ pub enum EvalError {
 /// Typecheck a term, returning an assignment of "types" to each of its nodes
 pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     theory: &Theory<O>, // *arrow* theory
-    source: OpenHypergraph<(), O>,
-    target: OpenHypergraph<(), O>,
-    arrow: &mut OpenHypergraph<(), OperationKey>,
-) -> Result<Vec<Tree<(), O>>, Error<O>> {
-    check_trace(theory, source, target, arrow).map(|trace| trace.node_types)
+    input: CheckInput<O>,
+) -> Result<CheckResult<O>, Error<O>> {
+    run_check(prepare_check(theory, input)?)
 }
 
 pub fn check_trace<O: Eq + Clone + Debug + std::fmt::Display>(
     theory: &Theory<O>, // *arrow* theory
-    source: OpenHypergraph<(), O>,
-    target: OpenHypergraph<(), O>,
-    arrow: &mut OpenHypergraph<(), OperationKey>,
+    input: CheckInput<O>,
 ) -> Result<CheckTrace<O>, Error<O>> {
-    let term = arrow.clone();
-    let (type_term, quotient, node_type_indices) = type_term(theory, source, target, arrow)?;
-    let (result, eval_steps) = eval_type(type_term.clone())?;
+    run_check_trace(prepare_check(theory, input)?)
+}
+
+pub fn prepare_check<O: Eq + Clone + Debug + std::fmt::Display>(
+    theory: &Theory<O>,
+    input: CheckInput<O>,
+) -> Result<PreparedCheck<O>, Error<O>> {
+    let proof_type_map = proof_type_map(theory, input.term.clone())?;
+    let raw_type_term = raw_type_term(
+        theory,
+        input.source.clone(),
+        input.target.clone(),
+        input.term.clone(),
+    )?;
+    let (type_term, quotient, node_type_indices) = quotient_type_term(&raw_type_term)?;
+
+    Ok(PreparedCheck {
+        input,
+        proof_type_map,
+        raw_type_term,
+        type_term,
+        quotient,
+        node_type_indices,
+    })
+}
+
+fn run_check<O: Eq + Clone + Debug + std::fmt::Display>(
+    prepared: PreparedCheck<O>,
+) -> Result<CheckResult<O>, Error<O>> {
+    run_check_trace(prepared).map(|trace| CheckResult {
+        node_types: trace.node_types,
+    })
+}
+
+fn run_check_trace<O: Eq + Clone + Debug + std::fmt::Display>(
+    prepared: PreparedCheck<O>,
+) -> Result<CheckTrace<O>, Error<O>> {
+    let (result, eval_steps) = eval_type(prepared.type_term.clone())?;
     let ssa = eval_steps.iter().map(|step| step.ssa.clone()).collect();
-    let node_types = node_type_indices
+    let node_types = prepared
+        .node_type_indices
         .iter()
         .map(|i| result[*i].clone())
         .collect();
 
     Ok(CheckTrace {
-        term,
-        type_term,
-        quotient,
-        node_type_indices,
+        prepared,
         ssa,
         eval_steps,
         result,
@@ -119,29 +167,25 @@ pub fn check_trace<O: Eq + Clone + Debug + std::fmt::Display>(
 }
 
 /// Compute the proof term's type map, without composing the declaration source/target checks.
-pub fn proof_type_map<O: Eq + Clone + Debug + std::fmt::Display>(
+fn proof_type_map<O: Eq + Clone + Debug + std::fmt::Display>(
     theory: &Theory<O>,
-    arrow: &mut OpenHypergraph<(), OperationKey>,
+    arrow: OpenHypergraph<(), OperationKey>,
 ) -> Result<OpenHypergraph<(), Dual<O>>, Error<O>> {
+    let mut arrow = arrow;
     arrow.quotient().map_err(Error::InvalidQuotient)?;
-    let mut type_map = AsType(theory).map_arrow(arrow);
+    let mut type_map = AsType(theory).map_arrow(&arrow);
     type_map.quotient().map_err(Error::InvalidQuotient)?;
     Ok(type_map)
 }
 
-/// Compute the checker type term `source+ ; proof-type-map ; target-`.
-pub fn type_term<O: Eq + Clone + Debug + std::fmt::Display>(
-    theory: &Theory<O>,
-    source: OpenHypergraph<(), O>,
-    target: OpenHypergraph<(), O>,
-    arrow: &mut OpenHypergraph<(), OperationKey>,
+fn quotient_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
+    raw: &RawTypeTerm<O>,
 ) -> Result<(OpenHypergraph<(), Dual<O>>, FiniteFunction, Vec<usize>), Error<O>> {
-    let raw = raw_type_term(theory, source, target, arrow)?;
-    let mut type_term = raw.graph;
-
+    let mut type_term = raw.graph.clone();
     let quotient = type_term.quotient().map_err(Error::InvalidQuotient)?;
     let node_type_indices = raw
         .proof_node_range_before_quotient
+        .clone()
         .map(|i| quotient.table[i])
         .collect();
 
@@ -149,19 +193,20 @@ pub fn type_term<O: Eq + Clone + Debug + std::fmt::Display>(
 }
 
 /// Compute the raw checker type term `source+ ; proof-type-map ; target-` before the final quotient.
-pub fn raw_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
+fn raw_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     theory: &Theory<O>,
     source: OpenHypergraph<(), O>,
     target: OpenHypergraph<(), O>,
-    arrow: &mut OpenHypergraph<(), OperationKey>,
+    arrow: OpenHypergraph<(), OperationKey>,
 ) -> Result<RawTypeTerm<O>, Error<O>> {
     let mut fwd = dual::into_fwd(source);
     let mut rev = dual::into_rev(target);
+    let mut arrow = arrow;
     fwd.quotient().map_err(Error::InvalidQuotient)?;
     rev.quotient().map_err(Error::InvalidQuotient)?;
     arrow.quotient().map_err(Error::InvalidQuotient)?;
 
-    let type_map = AsType(theory).map_arrow(arrow);
+    let type_map = AsType(theory).map_arrow(&arrow);
     let source_nodes = 0..fwd.hypergraph.nodes.len();
     let source_edges = 0..fwd.hypergraph.edges.len();
     let proof_nodes = source_nodes.end..source_nodes.end + type_map.hypergraph.nodes.len();
@@ -285,7 +330,7 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     Ok((result, steps))
 }
 
-pub fn merge<O: Debug + Eq>(
+fn merge<O: Debug + Eq>(
     value: &mut Option<Tree<(), O>>,
     new: Tree<(), O>,
 ) -> Result<(), EvalError> {

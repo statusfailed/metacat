@@ -1,4 +1,4 @@
-use crate::util::forget_labels;
+use crate::util::{DeclarationTermMode, declaration_check_input, forget_labels};
 
 use clap::{Args, Subcommand, ValueEnum};
 use hexpr::{Operation, try_interpret};
@@ -71,21 +71,21 @@ impl ArrowCommand {
                     use open_hypergraphs_dot::{Options, svg::to_svg_with};
                     use std::io::Write;
 
-                    let object_theory = bundle.object_theory;
                     let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
                     term.quotient().map_err(QuotientError)?;
-                    let source =
-                        forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
-                    let target =
-                        forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
-
-                    let result = check(&bundle.arrow_theory, source, target, &mut term);
+                    let input =
+                        declaration_check_input(&bundle, declaration, DeclarationTermMode::Body)?;
+                    let result = check(&bundle.arrow_theory, input);
                     let coarity = |op: &OperationKey| -> usize {
-                        object_theory.type_maps(op).1.targets.len()
+                        bundle.object_theory.type_maps(op).1.targets.len()
                     };
 
                     let labels: Vec<String> = match result {
-                        Ok(types) => types.iter().map(|t| t.pretty(Some(&coarity))).collect(),
+                        Ok(result) => result
+                            .node_types
+                            .iter()
+                            .map(|t| t.pretty(Some(&coarity)))
+                            .collect(),
                         Err(e) => {
                             log::warn!("check failed: {e}");
                             vec![String::new(); term.hypergraph.nodes.len()]
