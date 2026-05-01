@@ -14,18 +14,13 @@ metacat check <filename>
 for example:
 
 ```text
-> metacat check examples/fol.hex
-[✓] ax5d : {[x ph ps . ] ([ . ph] wff) ([ . ps] wff)} -> {[x ph ps . ] ([ . x ps] forall [aps . ]) ([ . ps aps] -> [inner . ]) ([ . ph inner] -> |-)}
-[✓] win : {wff wff} -> (-> -. wff)
-[✓] id : wff -> ([x . x x] -> |-)
-[✓] win-shared : {wff} -> ([x . x x] -> -. wff)
+> metacat check fol.hex
+[✓] p1 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> |-)}
 [✓] p2 : wff -> ([ph . ph ph] -> [i . ph i] -> |-)
+[✓] win : {wff wff} -> (-> -. wff)
 [✓] p3 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> [lhs . ]) ([ . ph id] -> [y . y id] -> [rhs . ]) ([ . lhs rhs] -> |-)}
 [✓] p4 : wff -> {[ph . ] ([ . ph ph] -> [id . ph id] -> [x . x id] -> |-)}
-[✓] p1 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> |-)}
-[✓] id-inline : wff -> ([x . x x] -> |-)
-[✓] a1i : {[ph ps . ] ([ . ph] wff) ([ . ps] wff) ([ . ph] |-)} -> ([ph ps . ps ph] -> |-)
-[✓] gen2 : {[x y ph . ] ([ . x] setvar) ([ . y] setvar) ([ . ph] wff) ([ . ph] |-)} -> {[x y ph . ] ([ . y ph] forall [yph . ]) ([ . x yph] forall |-)}
+[✓] id : wff -> ([x . x x] -> |-)
 ```
 
 The output order is not significant.
