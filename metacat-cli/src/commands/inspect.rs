@@ -413,7 +413,7 @@ fn type_map_node_labels(
     type_map: &OpenHypergraph<(), Dual<OperationKey>>,
     coarity: &dyn Fn(&OperationKey) -> usize,
 ) -> Option<Vec<String>> {
-    eval_type(type_map.clone()).ok().map(|trees| {
+    eval_type(type_map.clone()).ok().map(|(trees, _)| {
         trees
             .iter()
             .map(|tree| tree.pretty(Some(&coarity)))
@@ -445,8 +445,8 @@ fn object_map_node_labels(
         |op: &OperationKey| -> usize { bundle.object_theory.type_maps(op).1.targets.len() };
     let mut quotient_graph = graph.clone();
     let quotient = quotient_graph.quotient().ok()?;
-    let quotient_labels: Vec<String> = eval_type(dual::into_fwd(quotient_graph))
-        .ok()?
+    let (quotient_trees, _) = eval_type(dual::into_fwd(quotient_graph)).ok()?;
+    let quotient_labels: Vec<String> = quotient_trees
         .iter()
         .map(|tree| tree.pretty(Some(&coarity)))
         .collect();
@@ -655,7 +655,7 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
 
     println!();
     println!("eval:");
-    let (result, eval_steps) = match metacat::check::eval_type_trace(type_term.clone()) {
+    let (result, eval_steps) = match metacat::check::eval_type(type_term.clone()) {
         Ok(result) => result,
         Err(error) => {
             println!("  failed while evaluating type-term: {error}");

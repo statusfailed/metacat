@@ -100,7 +100,7 @@ pub fn check_trace<O: Eq + Clone + Debug + std::fmt::Display>(
     let term = arrow.clone();
     let (type_term, quotient, node_type_indices) = type_term(theory, source, target, arrow)?;
     let ssa = ssa(type_term.clone().to_strict())?;
-    let (result, eval_steps) = eval_type_trace(type_term.clone())?;
+    let (result, eval_steps) = eval_type(type_term.clone())?;
     let node_types = node_type_indices
         .iter()
         .map(|i| result[*i].clone())
@@ -197,110 +197,9 @@ pub fn raw_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
 /// Evaluate a type map
 pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
     f: OpenHypergraph<(), Dual<O>>,
-) -> Result<Vec<Tree<(), O>>, Error<O>> {
+) -> Result<(Vec<Tree<(), O>>, Vec<EvalStep<O>>), Error<O>> {
     // evaluation state initialized all to None, so that source `s` becomes `Leaf s`
-    let state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
-    eval_type_with(f, state)
-}
-
-pub fn eval_type_trace<O: Clone + Eq + Debug + std::fmt::Display>(
-    f: OpenHypergraph<(), Dual<O>>,
-) -> Result<(Vec<Tree<(), O>>, Vec<EvalStep<O>>), Error<O>> {
-    let state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
-    eval_type_with_trace(f, state)
-}
-
-pub fn eval_type_with<O: Clone + Eq + Debug + std::fmt::Display>(
-    f: OpenHypergraph<(), Dual<O>>,
-    mut state: Vec<Option<Tree<(), O>>>,
-) -> Result<Vec<Tree<(), O>>, Error<O>> {
-    for ssa_value in ssa(f.to_strict())? {
-        // Symbolic inputs to the op
-        let source_values: Vec<Tree<(), O>> = ssa_value
-            .sources
-            .into_iter()
-            .map(|i| {
-                state[i.0.0]
-                    .clone()
-                    .unwrap_or_else(|| Tree::Leaf(i.0.0, ()))
-            })
-            .collect();
-
-        match ssa_value.op {
-            // Push a symbol
-            Dual::Fwd(arr) => {
-                // Write a tree into each target whose root is this 'arr', recording the *output
-                // port* i for each value.
-                for (i, node_id) in ssa_value.targets.iter().enumerate() {
-                    merge(
-                        &mut state[node_id.0.0],
-                        Tree::Node(arr.clone(), i, source_values.clone()),
-                    )
-                    .map_err(|cause| PartialResult {
-                        cause,
-                        partial_result: state.clone(),
-                    })?;
-                }
-            }
-
-            // Pop a symbol
-            Dual::Rev(op) => {
-                // Ensure each input to a Rev op has the expected op label and port,
-                // and ensure *all* input trees have the same children.
-                let mut children = None;
-                for (i, v) in source_values.into_iter().enumerate() {
-                    match v {
-                        Tree::Node(arr, j, node_children) if i == j && arr == op => {
-                            children = match children {
-                                None => Some(node_children),
-                                Some(children) if children == node_children => Some(children),
-                                _ => {
-                                    return Err(PartialResult {
-                                        partial_result: state,
-                                        cause: EvalError::MatchError(
-                                            ssa_value.edge_id,
-                                            format!("{op:?} (children didn't match)"),
-                                        ),
-                                    }
-                                    .into());
-                                }
-                            }
-                        }
-                        _ => {
-                            return Err(PartialResult {
-                                partial_result: state,
-                                cause: EvalError::MatchError(ssa_value.edge_id, format!("{op:?}")),
-                            }
-                            .into());
-                        }
-                    }
-                }
-
-                // TODO: is this correct?
-                let children =
-                    children.unwrap_or_else(|| vec![Tree::Empty; ssa_value.targets.len()]);
-                for (node_id, child) in ssa_value.targets.iter().zip(children.into_iter()) {
-                    merge(&mut state[node_id.0.0], child).map_err(|cause| PartialResult {
-                        cause,
-                        partial_result: state.clone(),
-                    })?;
-                }
-            }
-        };
-    }
-
-    // Return final eval state
-    Ok(state
-        .into_iter()
-        .enumerate()
-        .map(|(i, opt)| opt.unwrap_or_else(|| Tree::Leaf(i, ())))
-        .collect())
-}
-
-pub fn eval_type_with_trace<O: Clone + Eq + Debug + std::fmt::Display>(
-    f: OpenHypergraph<(), Dual<O>>,
-    mut state: Vec<Option<Tree<(), O>>>,
-) -> Result<(Vec<Tree<(), O>>, Vec<EvalStep<O>>), Error<O>> {
+    let mut state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
     let mut steps = Vec::new();
 
     for ssa_value in ssa(f.to_strict())? {
@@ -316,6 +215,7 @@ pub fn eval_type_with_trace<O: Clone + Eq + Debug + std::fmt::Display>(
 
         match &ssa_value.op {
             Dual::Fwd(arr) => {
+                // Write a tree into each target whose root is this 'arr', recording the output port.
                 for (i, node_id) in ssa_value.targets.iter().enumerate() {
                     merge(
                         &mut state[node_id.0.0],
@@ -328,6 +228,7 @@ pub fn eval_type_with_trace<O: Clone + Eq + Debug + std::fmt::Display>(
                 }
             }
             Dual::Rev(op) => {
+                // Ensure each input has the expected op/port and all input trees share children.
                 let mut children = None;
                 for (i, v) in source_values.iter().cloned().enumerate() {
                     match v {
