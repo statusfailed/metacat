@@ -4,6 +4,7 @@ pub mod ssa;
 pub mod tree;
 
 pub mod prop;
+pub mod new_syntax;
 pub mod syntax;
 pub mod theory;
 
