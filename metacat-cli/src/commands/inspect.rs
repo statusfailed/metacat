@@ -259,7 +259,6 @@ fn inspect_arrow(
                 InspectFormat::Text => {
                     println!();
                     println!("type-term:");
-                    println!("  quotient: {:?}", prepared.quotient);
                     println!(
                         "  proof node type indices: {:?}",
                         prepared.node_type_indices
@@ -624,7 +623,6 @@ fn inspect_check(path: PathBuf, name: String, trace: bool) -> anyhow::Result<()>
             return Err(error.into());
         }
     };
-    println!("  quotient: {:?}", prepared.quotient);
     println!(
         "  proof node type indices: {:?}",
         prepared.node_type_indices

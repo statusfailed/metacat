@@ -58,7 +58,6 @@ pub struct PreparedCheck<O> {
     pub proof_type_map: OpenHypergraph<(), Dual<O>>,
     pub raw_type_term: RawTypeTerm<O>,
     pub type_term: OpenHypergraph<(), Dual<O>>,
-    pub quotient: FiniteFunction,
     pub node_type_indices: Vec<usize>,
 }
 
@@ -126,14 +125,13 @@ pub fn prepare_check<O: Eq + Clone + Debug + std::fmt::Display>(
         input.target.clone(),
         input.term.clone(),
     )?;
-    let (type_term, quotient, node_type_indices) = quotient_type_term(&raw_type_term)?;
+    let (type_term, node_type_indices) = quotient_type_term(&raw_type_term)?;
 
     Ok(PreparedCheck {
         input,
         proof_type_map,
         raw_type_term,
         type_term,
-        quotient,
         node_type_indices,
     })
 }
@@ -180,7 +178,7 @@ fn proof_type_map<O: Eq + Clone + Debug + std::fmt::Display>(
 
 fn quotient_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
     raw: &RawTypeTerm<O>,
-) -> Result<(OpenHypergraph<(), Dual<O>>, FiniteFunction, Vec<usize>), Error<O>> {
+) -> Result<(OpenHypergraph<(), Dual<O>>, Vec<usize>), Error<O>> {
     let mut type_term = raw.graph.clone();
     let quotient = type_term.quotient().map_err(Error::InvalidQuotient)?;
     let node_type_indices = raw
@@ -189,7 +187,7 @@ fn quotient_type_term<O: Eq + Clone + Debug + std::fmt::Display>(
         .map(|i| quotient.table[i])
         .collect();
 
-    Ok((type_term, quotient, node_type_indices))
+    Ok((type_term, node_type_indices))
 }
 
 /// Compute the raw checker type term `source+ ; proof-type-map ; target-` before the final quotient.
