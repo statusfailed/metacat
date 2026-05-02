@@ -9,20 +9,23 @@
 
 use hexpr::{Operation, Signature};
 
-/// Unary-encoded natural number used by the builtin `nat` syntax category.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Nat(pub usize);
+/// Reserved theory name for the builtin `nat` syntax category.
+pub const NAT_THEORY_NAME: &str = "nat";
+
+/// Parsed operation key for the builtin `nat` syntax category.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NatKey(pub usize);
 
 /// Signature adapter for interpreting numerals as arrows `I -> One^n`.
 pub struct NatObj;
 
 impl Signature for NatObj {
-    type Arr = Nat;
+    type Arr = NatKey;
     type Obj = ();
     type Error = std::num::ParseIntError;
 
     fn try_parse_op(&self, op: &Operation) -> Result<Self::Arr, Self::Error> {
-        Ok(Nat(op.as_str().parse()?))
+        Ok(NatKey(op.as_str().parse()?))
     }
 
     fn profile(&self, op: &Self::Arr) -> (Vec<Option<Self::Obj>>, Vec<Option<Self::Obj>>) {

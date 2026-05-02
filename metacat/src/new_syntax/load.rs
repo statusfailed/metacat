@@ -10,10 +10,8 @@
 //! downstream checking and tooling.
 
 use super::ast::{ParseRawError, RawFile};
-use super::model::{
-    ArrowKey, File, SignatureError, SyntaxBase, SyntaxTerm, Theory, TheoryArrow, TheoryId,
-};
-use super::nat::NatObj;
+use super::model::{File, SignatureError, Term, Theory, TheoryArrow, TheoryId, TheoryKind};
+use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
 use hexpr::{Operation, try_interpret};
 use open_hypergraphs::category::Arrow;
 use open_hypergraphs::lax::OpenHypergraph;
@@ -68,7 +66,8 @@ impl File {
 }
 
 fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
-    let theory_ids: HashMap<Operation, TheoryId> = raw
+    let nat_id = builtin_nat_theory_id();
+    let mut theory_ids: HashMap<Operation, TheoryId> = raw
         .theories
         .keys()
         .cloned()
@@ -77,27 +76,42 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
             (name, id)
         })
         .collect();
+    theory_ids.insert(nat_id.0.clone(), nat_id.clone());
 
     let syntax_bases = resolve_syntax_bases(&raw, &theory_ids)?;
     let order = topological_order(&syntax_bases)?;
     let mut theories = HashMap::new();
 
     for theory_id in order {
-        let raw_theory = raw.theories.get(&theory_id.0).expect("resolved theory missing");
-        let syntax_base = syntax_bases.get(&theory_id).expect("resolved syntax base missing");
+        let syntax = syntax_bases
+            .get(&theory_id)
+            .expect("resolved syntax base missing")
+            .clone();
+
+        let Some(raw_theory) = raw.theories.get(&theory_id.0) else {
+            theories.insert(
+                theory_id.clone(),
+                Theory {
+                    id: theory_id,
+                    kind: TheoryKind::Nat,
+                },
+            );
+            continue;
+        };
 
         let mut arrows = HashMap::new();
         for raw_arrow in raw_theory.arrows.values() {
-            let key = ArrowKey {
-                theory: theory_id.clone(),
-                name: raw_arrow.name.clone(),
-            };
-            let type_maps =
-                interpret_type_maps(&theory_id, &raw_arrow.name, syntax_base, &raw_arrow.type_maps, &theories)?;
+            let type_maps = interpret_type_maps(
+                &theory_id,
+                &raw_arrow.name,
+                &syntax,
+                &raw_arrow.type_maps,
+                &theories,
+            )?;
             arrows.insert(
-                key.clone(),
+                raw_arrow.name.clone(),
                 TheoryArrow {
-                    key,
+                    name: raw_arrow.name.clone(),
                     type_maps,
                     definition: None,
                 },
@@ -106,15 +120,14 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
 
         let mut theory = Theory {
             id: theory_id.clone(),
-            syntax_base: syntax_base.clone(),
-            arrows,
+            kind: TheoryKind::User {
+                syntax: syntax.clone(),
+                arrows,
+            },
         };
 
         for raw_arrow in raw_theory.arrows.values() {
             if let Some(definition) = &raw_arrow.definition {
-                let key = theory
-                    .get_arrow_key(&raw_arrow.name)
-                    .expect("missing local arrow key");
                 let body = try_interpret(&theory.local_signature(), definition)
                     .map(|term| forget_labels(term))
                     .map_err(|source| LoadError::DefinitionInterpret {
@@ -122,7 +135,12 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
                         arrow: raw_arrow.name.clone(),
                         source,
                     })?;
-                theory.arrows.get_mut(&key).expect("missing local arrow").definition = Some(body);
+                theory
+                    .user_arrows_mut()
+                    .expect("user theory should have arrows")
+                    .get_mut(&raw_arrow.name)
+                    .expect("missing local arrow")
+                    .definition = Some(body);
             }
         }
 
@@ -135,25 +153,23 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
 fn resolve_syntax_bases(
     raw: &RawFile,
     theory_ids: &HashMap<Operation, TheoryId>,
-) -> Result<HashMap<TheoryId, SyntaxBase>, LoadError> {
+) -> Result<HashMap<TheoryId, TheoryId>, LoadError> {
+    let nat_id = builtin_nat_theory_id();
     let mut bases = HashMap::new();
+    bases.insert(nat_id.clone(), nat_id.clone());
 
     for raw_theory in raw.theories.values() {
         let theory = theory_ids
             .get(&raw_theory.name)
             .expect("theory id missing")
             .clone();
-        let syntax_base = if raw_theory.syntax_category.as_str() == "nat" {
-            SyntaxBase::Nat
-        } else {
-            let base = theory_ids.get(&raw_theory.syntax_category).cloned().ok_or_else(|| {
-                LoadError::UnknownSyntaxCategory {
-                    theory: theory.clone(),
-                    base: raw_theory.syntax_category.clone(),
-                }
+        let syntax_base = theory_ids
+            .get(&raw_theory.syntax_category)
+            .cloned()
+            .ok_or_else(|| LoadError::UnknownSyntaxCategory {
+                theory: theory.clone(),
+                base: raw_theory.syntax_category.clone(),
             })?;
-            SyntaxBase::Theory(base)
-        };
         bases.insert(theory, syntax_base);
     }
 
@@ -161,7 +177,7 @@ fn resolve_syntax_bases(
 }
 
 fn topological_order(
-    syntax_bases: &HashMap<TheoryId, SyntaxBase>,
+    syntax_bases: &HashMap<TheoryId, TheoryId>,
 ) -> Result<Vec<TheoryId>, LoadError> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Mark {
@@ -171,7 +187,7 @@ fn topological_order(
 
     fn visit(
         theory: &TheoryId,
-        syntax_bases: &HashMap<TheoryId, SyntaxBase>,
+        syntax_bases: &HashMap<TheoryId, TheoryId>,
         marks: &mut HashMap<TheoryId, Mark>,
         order: &mut Vec<TheoryId>,
     ) -> Result<(), LoadError> {
@@ -182,8 +198,10 @@ fn topological_order(
         }
 
         marks.insert(theory.clone(), Mark::Visiting);
-        if let Some(SyntaxBase::Theory(base)) = syntax_bases.get(theory) {
-            visit(base, syntax_bases, marks, order)?;
+        if let Some(base) = syntax_bases.get(theory) {
+            if base != theory {
+                visit(base, syntax_bases, marks, order)?;
+            }
         }
         marks.insert(theory.clone(), Mark::Done);
         order.push(theory.clone());
@@ -201,64 +219,93 @@ fn topological_order(
 fn interpret_type_maps(
     theory: &TheoryId,
     arrow: &Operation,
-    syntax_base: &SyntaxBase,
+    syntax: &TheoryId,
     type_maps: &(hexpr::Hexpr, hexpr::Hexpr),
     theories: &HashMap<TheoryId, Theory>,
-) -> Result<(SyntaxTerm, SyntaxTerm), LoadError> {
-    match syntax_base {
-        SyntaxBase::Nat => {
-            let source = try_interpret(&NatObj, &type_maps.0)
-                .map(forget_labels)
-                .map_err(|source| LoadError::NatInterpret {
-                    theory: theory.clone(),
-                    arrow: arrow.clone(),
-                    source,
-                })?;
-            let target = try_interpret(&NatObj, &type_maps.1)
-                .map(forget_labels)
-                .map_err(|source| LoadError::NatInterpret {
-                    theory: theory.clone(),
-                    arrow: arrow.clone(),
-                    source,
-                })?;
-            if source.source() != target.source() {
-                return Err(LoadError::InvalidTypeMapDomain {
-                    theory: theory.clone(),
-                    arrow: arrow.clone(),
-                });
-            }
-            Ok((SyntaxTerm::Nat(source), SyntaxTerm::Nat(target)))
+) -> Result<(Term, Term), LoadError> {
+    if is_builtin_nat(syntax) {
+        let source = try_interpret(&NatObj, &type_maps.0)
+            .map(forget_labels)
+            .map(|term| term.map_edges(nat_key_to_operation))
+            .map_err(|source| LoadError::NatInterpret {
+                theory: theory.clone(),
+                arrow: arrow.clone(),
+                source,
+            })?;
+        let target = try_interpret(&NatObj, &type_maps.1)
+            .map(forget_labels)
+            .map(|term| term.map_edges(nat_key_to_operation))
+            .map_err(|source| LoadError::NatInterpret {
+                theory: theory.clone(),
+                arrow: arrow.clone(),
+                source,
+            })?;
+        if source.source() != target.source() {
+            return Err(LoadError::InvalidTypeMapDomain {
+                theory: theory.clone(),
+                arrow: arrow.clone(),
+            });
         }
-        SyntaxBase::Theory(base) => {
-            let base_theory = theories.get(base).expect("base theory should be resolved first");
-            let signature = base_theory.local_signature();
-            let source = try_interpret(&signature, &type_maps.0)
-                .map(forget_labels)
-                .map_err(|source| LoadError::SyntaxInterpret {
-                    theory: theory.clone(),
-                    arrow: arrow.clone(),
-                    source,
-                })?;
-            let target = try_interpret(&signature, &type_maps.1)
-                .map(forget_labels)
-                .map_err(|source| LoadError::SyntaxInterpret {
-                    theory: theory.clone(),
-                    arrow: arrow.clone(),
-                    source,
-                })?;
-            if source.source() != target.source() {
-                return Err(LoadError::InvalidTypeMapDomain {
-                    theory: theory.clone(),
-                    arrow: arrow.clone(),
-                });
-            }
-            Ok((SyntaxTerm::Theory(source), SyntaxTerm::Theory(target)))
+        Ok((source, target))
+    } else {
+        let base_theory = theories
+            .get(syntax)
+            .expect("base theory should be resolved first");
+        let signature = base_theory.local_signature();
+        let source = try_interpret(&signature, &type_maps.0)
+            .map(forget_labels)
+            .map_err(|source| LoadError::SyntaxInterpret {
+                theory: theory.clone(),
+                arrow: arrow.clone(),
+                source,
+            })?;
+        let target = try_interpret(&signature, &type_maps.1)
+            .map(forget_labels)
+            .map_err(|source| LoadError::SyntaxInterpret {
+                theory: theory.clone(),
+                arrow: arrow.clone(),
+                source,
+            })?;
+        if source.source() != target.source() {
+            return Err(LoadError::InvalidTypeMapDomain {
+                theory: theory.clone(),
+                arrow: arrow.clone(),
+            });
         }
+        Ok((source, target))
     }
 }
 
 fn forget_labels<T, A>(f: OpenHypergraph<T, A>) -> OpenHypergraph<(), A> {
     f.map_nodes(|_| ())
+}
+
+fn builtin_nat_theory_id() -> TheoryId {
+    TheoryId(
+        NAT_THEORY_NAME
+            .parse()
+            .expect("builtin nat theory name should parse"),
+    )
+}
+
+fn is_builtin_nat(theory: &TheoryId) -> bool {
+    theory.0.as_str() == NAT_THEORY_NAME
+}
+
+fn nat_key_to_operation(key: NatKey) -> Operation {
+    key.0
+        .to_string()
+        .parse()
+        .expect("decimal numeral should parse as hexpr operation")
+}
+
+impl Theory {
+    fn user_arrows_mut(&mut self) -> Option<&mut HashMap<Operation, TheoryArrow>> {
+        match &mut self.kind {
+            TheoryKind::Nat => None,
+            TheoryKind::User { arrows, .. } => Some(arrows),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -283,17 +330,24 @@ mod tests {
             "#,
         )?;
 
+        let nat_id = TheoryId("nat".parse()?);
         let syntax_id = TheoryId("fol.syntax".parse()?);
         let proof_id = TheoryId("fol.proof".parse()?);
 
+        let nat = file.theories.get(&nat_id).unwrap();
         let syntax = file.theories.get(&syntax_id).unwrap();
         let proof = file.theories.get(&proof_id).unwrap();
 
-        assert!(matches!(syntax.syntax_base, SyntaxBase::Nat));
-        assert!(matches!(proof.syntax_base, SyntaxBase::Theory(ref id) if *id == syntax_id));
-        assert_eq!(syntax.arrows.len(), 3);
-        assert_eq!(proof.arrows.len(), 3);
-        assert!(proof.arrows.values().any(|arrow| arrow.definition.is_some()));
+        assert!(matches!(nat.kind, TheoryKind::Nat));
+        assert!(
+            matches!(&syntax.kind, TheoryKind::User { syntax: id, arrows } if *id == nat_id && arrows.len() == 3)
+        );
+        assert!(
+            matches!(&proof.kind, TheoryKind::User { syntax: id, arrows } if *id == syntax_id && arrows.len() == 3)
+        );
+        assert!(
+            matches!(&proof.kind, TheoryKind::User { arrows, .. } if arrows.values().any(|arrow| arrow.definition.is_some()))
+        );
         Ok(())
     }
 

@@ -35,7 +35,10 @@ pub enum ParseRawError {
     #[error("Invalid theory declaration: {0}")]
     InvalidTheoryDeclaration(Hexpr),
     #[error("Invalid arrow declaration in theory {theory}: {declaration}")]
-    InvalidArrowDeclaration { theory: Operation, declaration: Hexpr },
+    InvalidArrowDeclaration {
+        theory: Operation,
+        declaration: Hexpr,
+    },
     #[error("Duplicate theory declaration: {0}")]
     DuplicateTheory(Operation),
     #[error("Duplicate arrow declaration {arrow} in theory {theory}")]
@@ -45,6 +48,7 @@ pub enum ParseRawError {
 }
 
 impl RawFile {
+    /// Parse text into a [`RawFile`] consisting of zero or more top-level theory declarations
     pub fn from_text(text: &str) -> Result<Self, ParseRawError> {
         let hexprs = parse_hexprs(text)?;
         let mut theories = HashMap::new();
@@ -52,7 +56,10 @@ impl RawFile {
         for hexpr in hexprs {
             let theory = RawTheory::try_from_hexpr(hexpr.clone())
                 .ok_or(ParseRawError::InvalidTheoryDeclaration(hexpr))?;
-            if theories.insert(theory.name.clone(), theory.clone()).is_some() {
+            if theories
+                .insert(theory.name.clone(), theory.clone())
+                .is_some()
+            {
                 return Err(ParseRawError::DuplicateTheory(theory.name));
             }
         }
@@ -130,13 +137,12 @@ impl RawTheory {
 
         let mut arrows = HashMap::new();
         for declaration in body {
-            let arrow =
-                RawTheoryArrow::try_from_hexpr(declaration.clone()).ok_or_else(|| {
-                    ParseRawError::InvalidArrowDeclaration {
-                        theory: theory_name.clone(),
-                        declaration: declaration.clone(),
-                    }
-                })?;
+            let arrow = RawTheoryArrow::try_from_hexpr(declaration.clone()).ok_or_else(|| {
+                ParseRawError::InvalidArrowDeclaration {
+                    theory: theory_name.clone(),
+                    declaration: declaration.clone(),
+                }
+            })?;
             if arrows.insert(arrow.name.clone(), arrow.clone()).is_some() {
                 return Err(ParseRawError::DuplicateArrow {
                     theory: theory_name.clone(),
@@ -171,11 +177,19 @@ impl RawTheoryArrow {
                     definition: None,
                 })
             }
-            [kind, Hexpr::Operation(name), colon, source, arrow, target, eq, def]
-                if is_operation(kind, "def")
-                    && is_operation(colon, ":")
-                    && is_operation(arrow, "->")
-                    && is_operation(eq, "=") =>
+            [
+                kind,
+                Hexpr::Operation(name),
+                colon,
+                source,
+                arrow,
+                target,
+                eq,
+                def,
+            ] if is_operation(kind, "def")
+                && is_operation(colon, ":")
+                && is_operation(arrow, "->")
+                && is_operation(eq, "=") =>
             {
                 Some(Self {
                     name: name.clone(),
