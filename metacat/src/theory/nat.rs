@@ -6,6 +6,11 @@
 //!
 //! A natural number `n` is represented by an arrow `I -> One^n`, encoded in
 //! surface syntax by the numeral `n`.
+//!
+//! Strictly speaking, a numeral `n` is actually a *definition* named `n`, standing for the
+//! `n`-fold tensor product of the generating arrow `one`, denoted `1`.
+//! However, in a (unique) special case, these definitions are inlined, so that one can write
+//! `foo : 2 -> 1` and have it auto-expanded to `foo : {1 1} -> 1` under the hood.
 
 use hexpr::{Operation, Signature};
 

@@ -28,9 +28,6 @@
 
   # quantifiers
   (arr forall : 2 -> 1)
-
-  (def in : 2 -> 1 = (-> -.))
-  (def foo : 3 -> 1 = ({-> [x]} ->))
 })
 
 (theory fol.proof fol.syntax {

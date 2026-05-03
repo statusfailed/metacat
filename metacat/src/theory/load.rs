@@ -12,7 +12,7 @@
 use super::ast::{MergeRawError, ParseRawError, RawTheorySet};
 use super::model::{SignatureError, Term, Theory, TheoryArrow, TheoryId, TheorySet};
 use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
-use hexpr::{Operation, Signature, try_interpret};
+use hexpr::{Hexpr, Operation, Signature, try_interpret};
 use open_hypergraphs::category::Arrow;
 use open_hypergraphs::lax::OpenHypergraph;
 use std::collections::{BTreeMap, HashMap};
@@ -270,9 +270,16 @@ fn interpret_type_maps(
     theories: &BTreeMap<TheoryId, Theory>,
 ) -> Result<(Term, Term), LoadError> {
     if is_builtin_nat(syntax) {
+        // normalize nat syntax so that "2" means "{1 1}".
+        // More concretely, each numeral `n` is taken to be a definition standing for `{1 ..n.. 1}`
+        // see nat.rs for more details.
+        let normalized = (
+            normalize_nat_hexpr(&type_maps.0),
+            normalize_nat_hexpr(&type_maps.1),
+        );
         interpret_type_maps_with(
             &NatObj,
-            type_maps,
+            &normalized,
             nat_key_to_operation,
             |source| LoadError::NatInterpret {
                 theory: theory.clone(),
@@ -304,6 +311,43 @@ fn interpret_type_maps(
             },
         )
     }
+}
+
+fn normalize_nat_hexpr(hexpr: &Hexpr) -> Hexpr {
+    match hexpr {
+        Hexpr::Composition(parts) => {
+            Hexpr::Composition(parts.iter().map(normalize_nat_hexpr).collect())
+        }
+        Hexpr::Tensor(parts) => Hexpr::Tensor(
+            parts
+                .iter()
+                .flat_map(|part| match normalize_nat_hexpr(part) {
+                    Hexpr::Tensor(inner) => inner,
+                    other => vec![other],
+                })
+                .collect(),
+        ),
+        Hexpr::Frobenius { sources, targets } => Hexpr::Frobenius {
+            sources: sources.clone(),
+            targets: targets.clone(),
+        },
+        Hexpr::Operation(op) => normalize_nat_operation(op),
+    }
+}
+
+fn normalize_nat_operation(op: &Operation) -> Hexpr {
+    match op.as_str().parse::<usize>() {
+        Ok(0) => Hexpr::Tensor(vec![]),
+        Ok(n) => Hexpr::Tensor((0..n).map(|_| nat_one_hexpr()).collect()),
+        Err(_) => Hexpr::Operation(op.clone()),
+    }
+}
+
+fn nat_one_hexpr() -> Hexpr {
+    Hexpr::Operation(
+        "1".parse()
+            .expect("builtin nat numeral should parse as operation"),
+    )
 }
 
 fn interpret_type_maps_with<S, F, E, I>(
@@ -430,6 +474,31 @@ mod tests {
             file.theories.get(&proof_id),
             Some(Theory::Theory { syntax, arrows }) if *syntax == syntax_id && arrows.len() == 1
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn expands_nat_numerals_to_tensors_of_one() -> Result<(), Box<dyn std::error::Error>> {
+        let file = TheorySet::from_text(
+            r#"
+            (theory smol.syntax nat {
+              (arr -> : 2 -> 1)
+            })
+            "#,
+        )?;
+
+        let theory_id = TheoryId("smol.syntax".parse()?);
+        let Theory::Theory { arrows, .. } = file.theories.get(&theory_id).unwrap() else {
+            panic!("expected user theory");
+        };
+        let arrow = arrows.get(&"->".parse()?).unwrap();
+
+        assert_eq!(
+            arrow.type_maps.0.hypergraph.edges,
+            vec!["1".parse()?, "1".parse()?]
+        );
+        assert_eq!(arrow.type_maps.1.hypergraph.edges, vec!["1".parse()?]);
+
         Ok(())
     }
 
