@@ -97,20 +97,20 @@ fn check_files(theory_name: String, paths: Vec<PathBuf>) -> anyhow::Result<()> {
         match result {
             Ok(_types) => {
                 println!(
-                    "{} {} : {:?} -> {:?}",
+                    "{} {} : {} -> {}",
                     "[✓]".green(),
                     declaration.name,
-                    declaration.type_maps.0,
-                    declaration.type_maps.1
+                    declaration.raw.type_maps.0,
+                    declaration.raw.type_maps.1
                 );
             }
             Err(e) => {
                 println!(
-                    "{} {} : {:?} -> {:?}",
+                    "{} {} : {} -> {}",
                     "[✗]".red(),
                     declaration.name,
-                    declaration.type_maps.0,
-                    declaration.type_maps.1
+                    declaration.raw.type_maps.0,
+                    declaration.raw.type_maps.1
                 );
                 println!("Checking '{}' failed: {}", declaration.name, e);
             }

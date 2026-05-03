@@ -149,6 +149,7 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
             arrows.insert(
                 raw_arrow.name.clone(),
                 TheoryArrow {
+                    raw: raw_arrow.clone(),
                     name: raw_arrow.name.clone(),
                     type_maps,
                     definition: None,

@@ -9,6 +9,7 @@
 //! definition bodies to be interpreted against a theory once its arrow
 //! declarations have been registered.
 
+use super::ast::RawTheoryArrow;
 use hexpr::{Operation, Signature};
 use open_hypergraphs::lax::OpenHypergraph;
 use std::collections::BTreeMap;
@@ -41,6 +42,7 @@ pub enum Theory {
 /// A resolved arrow declaration, optionally with a definitional body.
 #[derive(Clone, Debug)]
 pub struct TheoryArrow {
+    pub raw: RawTheoryArrow,
     pub name: Operation,
     pub type_maps: (Term, Term),
     pub definition: Option<Term>,
