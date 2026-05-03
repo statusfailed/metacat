@@ -4,13 +4,25 @@ enum Orientation {
     TB,
 }
 
+use hexpr::Operation;
 use metacat::check::check;
 use metacat::theory::{Theory, TheoryId, TheorySet};
+use open_hypergraphs::strict::vec::FiniteFunction;
+use thiserror::Error;
 
 // CLI utils
 use clap::{Parser, Subcommand, ValueEnum};
 use colored::*;
 use std::path::PathBuf;
+
+#[derive(Debug, Error)]
+pub struct QuotientError(FiniteFunction);
+
+impl std::fmt::Display for QuotientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.0)
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "metacat-cli", version=env!("CARGO_PKG_VERSION"),)]
@@ -34,6 +46,32 @@ enum Command {
         theory_name: String,
         #[arg(required = true)]
         paths: Vec<PathBuf>,
+    },
+    Arrow {
+        #[command(subcommand)]
+        format: ArrowFormat,
+    },
+}
+
+#[derive(Subcommand)]
+enum ArrowFormat {
+    Hexpr {
+        #[arg()]
+        theory_name: String,
+        #[arg()]
+        name: String,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+    },
+    Svg {
+        #[arg()]
+        theory_name: String,
+        #[arg()]
+        name: String,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+        #[arg(short, long, value_enum, default_value_t = Orientation::LR)]
+        orientation: Orientation,
     },
 }
 
@@ -65,6 +103,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Check { theory_name, paths } => check_files(theory_name, paths),
+        Command::Arrow { format } => arrow(format),
     }
 }
 
@@ -118,4 +157,103 @@ fn check_files(theory_name: String, paths: Vec<PathBuf>) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
+    let (theory_name, name, paths) = match &format {
+        ArrowFormat::Hexpr {
+            theory_name,
+            name,
+            paths,
+        }
+        | ArrowFormat::Svg {
+            theory_name,
+            name,
+            paths,
+            ..
+        } => (theory_name.clone(), name.clone(), paths.clone()),
+    };
+
+    let theories = TheorySet::from_files(paths)?;
+    let theory_id = TheoryId(theory_name.parse()?);
+    let theory = theories
+        .theories
+        .get(&theory_id)
+        .ok_or_else(|| anyhow::anyhow!("theory '{}' not found", theory_id))?;
+    let Theory::Theory { syntax, arrows } = theory else {
+        anyhow::bail!("theory '{}' is builtin and has no definitional arrows", theory_id);
+    };
+
+    let operation: Operation = name.parse()?;
+    let declaration = arrows
+        .get(&operation)
+        .ok_or_else(|| anyhow::anyhow!("definition '{}' not found in theory '{}'", name, theory_id))?;
+    let def_term = declaration
+        .definition
+        .clone()
+        .ok_or_else(|| anyhow::anyhow!("arrow '{}' in theory '{}' has no definition", name, theory_id))?;
+
+    match format {
+        ArrowFormat::Hexpr { .. } => {
+            let raw_def = declaration
+                .raw
+                .definition
+                .as_ref()
+                .expect("resolved definitional arrow should retain raw definition");
+            println!("{raw_def}");
+        }
+        ArrowFormat::Svg { orientation, .. } => {
+            use open_hypergraphs_dot::{Options, svg::to_svg_with};
+            use std::io::Write;
+
+            let mut term = def_term;
+            term.quotient().map_err(QuotientError)?;
+            let (source, target) = declaration.type_maps.clone();
+            let result = check(theory, source, target, &mut term);
+
+            let coarity = |op: &Operation| -> usize { coarity_of(&theories, syntax, op) };
+
+            let labels: Vec<String> = match result {
+                Ok(types) => types.iter().map(|t| t.pretty(Some(&coarity))).collect(),
+                Err(e) => {
+                    log::warn!("check failed: {e}");
+                    vec![String::new(); term.hypergraph.nodes.len()]
+                }
+            };
+
+            let mut opts = Options::default().display();
+            opts.orientation = match orientation {
+                Orientation::LR => open_hypergraphs_dot::Orientation::LR,
+                Orientation::TB => open_hypergraphs_dot::Orientation::TB,
+            };
+
+            std::io::stdout().write_all(&to_svg_with(
+                &term.with_nodes(|_| labels).expect("labels length mismatch"),
+                &opts,
+            )?)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn coarity_of(theories: &TheorySet, syntax: &TheoryId, op: &Operation) -> usize {
+    let syntax_theory = theories
+        .theories
+        .get(syntax)
+        .expect("syntax theory should be present");
+
+    match syntax_theory {
+        Theory::Nat => op
+            .as_str()
+            .parse()
+            .expect("nat operation should be a decimal numeral"),
+        Theory::Theory { arrows, .. } => arrows
+            .get(op)
+            .expect("syntax operation missing from theory")
+            .type_maps
+            .1
+            .targets
+            .len(),
+    }
 }
