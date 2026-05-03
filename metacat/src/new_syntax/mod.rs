@@ -23,4 +23,4 @@ pub mod nat;
 
 pub use ast::{RawFile, RawTheory, RawTheoryArrow};
 pub use load::LoadError;
-pub use model::{File, Term, Theory, TheoryArrow, TheoryId, TheoryKind};
+pub use model::{File, Term, Theory, TheoryArrow, TheoryId};

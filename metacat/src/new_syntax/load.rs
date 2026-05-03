@@ -10,7 +10,7 @@
 //! downstream checking and tooling.
 
 use super::ast::{ParseRawError, RawFile};
-use super::model::{File, SignatureError, Term, Theory, TheoryArrow, TheoryId, TheoryKind};
+use super::model::{File, SignatureError, Term, Theory, TheoryArrow, TheoryId};
 use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
 use hexpr::{Operation, try_interpret};
 use open_hypergraphs::category::Arrow;
@@ -67,6 +67,8 @@ impl File {
 
 fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
     let nat_id = builtin_nat_theory_id();
+    // Reserve an id for the builtin `nat` theory alongside user-defined names so
+    // later resolution can treat syntax references uniformly.
     let mut theory_ids: HashMap<Operation, TheoryId> = raw
         .theories
         .keys()
@@ -83,19 +85,18 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
     let mut theories = HashMap::new();
 
     for theory_id in order {
+        // Each theory is loaded only after its syntax theory has already been
+        // inserted into `theories`, so user syntax maps can be interpreted
+        // against the previously resolved base.
         let syntax = syntax_bases
             .get(&theory_id)
             .expect("resolved syntax base missing")
             .clone();
 
         let Some(raw_theory) = raw.theories.get(&theory_id.0) else {
-            theories.insert(
-                theory_id.clone(),
-                Theory {
-                    id: theory_id,
-                    kind: TheoryKind::Nat,
-                },
-            );
+            // The builtin `nat` theory is injected into the environment but has
+            // no raw source declaration and no finite arrow table.
+            theories.insert(theory_id.clone(), Theory::Nat);
             continue;
         };
 
@@ -118,12 +119,9 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
             );
         }
 
-        let mut theory = Theory {
-            id: theory_id.clone(),
-            kind: TheoryKind::User {
-                syntax: syntax.clone(),
-                arrows,
-            },
+        let mut theory = Theory::Theory {
+            syntax: syntax.clone(),
+            arrows,
         };
 
         for raw_arrow in raw_theory.arrows.values() {
@@ -156,6 +154,10 @@ fn resolve_syntax_bases(
 ) -> Result<HashMap<TheoryId, TheoryId>, LoadError> {
     let nat_id = builtin_nat_theory_id();
     let mut bases = HashMap::new();
+    // `nat` is the unique root builtin. Giving it itself as a base keeps the
+    // dependency graph total while still letting the topo walk stop at the root.
+    // This is not merely ad hoc: categorically, the builtin `nat` theory is
+    // also the syntax category in which its own arrow profiles live.
     bases.insert(nat_id.clone(), nat_id.clone());
 
     for raw_theory in raw.theories.values() {
@@ -163,6 +165,8 @@ fn resolve_syntax_bases(
             .get(&raw_theory.name)
             .expect("theory id missing")
             .clone();
+        // At this stage we only resolve names; interpretation of the actual
+        // type maps is deferred until the base theory has been loaded.
         let syntax_base = theory_ids
             .get(&raw_theory.syntax_category)
             .cloned()
@@ -199,11 +203,15 @@ fn topological_order(
 
         marks.insert(theory.clone(), Mark::Visiting);
         if let Some(base) = syntax_bases.get(theory) {
+            // The builtin `nat` root is represented by the self-edge `nat -> nat`.
+            // We do not recurse across that edge.
             if base != theory {
                 visit(base, syntax_bases, marks, order)?;
             }
         }
         marks.insert(theory.clone(), Mark::Done);
+        // Post-order insertion ensures every syntax dependency appears before
+        // the theories that depend on it.
         order.push(theory.clone());
         Ok(())
     }
@@ -301,9 +309,9 @@ fn nat_key_to_operation(key: NatKey) -> Operation {
 
 impl Theory {
     fn user_arrows_mut(&mut self) -> Option<&mut HashMap<Operation, TheoryArrow>> {
-        match &mut self.kind {
-            TheoryKind::Nat => None,
-            TheoryKind::User { arrows, .. } => Some(arrows),
+        match self {
+            Theory::Nat => None,
+            Theory::Theory { arrows, .. } => Some(arrows),
         }
     }
 }
@@ -338,15 +346,15 @@ mod tests {
         let syntax = file.theories.get(&syntax_id).unwrap();
         let proof = file.theories.get(&proof_id).unwrap();
 
-        assert!(matches!(nat.kind, TheoryKind::Nat));
+        assert!(matches!(nat, Theory::Nat));
         assert!(
-            matches!(&syntax.kind, TheoryKind::User { syntax: id, arrows } if *id == nat_id && arrows.len() == 3)
+            matches!(syntax, Theory::Theory { syntax: id, arrows } if *id == nat_id && arrows.len() == 3)
         );
         assert!(
-            matches!(&proof.kind, TheoryKind::User { syntax: id, arrows } if *id == syntax_id && arrows.len() == 3)
+            matches!(proof, Theory::Theory { syntax: id, arrows } if *id == syntax_id && arrows.len() == 3)
         );
         assert!(
-            matches!(&proof.kind, TheoryKind::User { arrows, .. } if arrows.values().any(|arrow| arrow.definition.is_some()))
+            matches!(proof, Theory::Theory { arrows, .. } if arrows.values().any(|arrow| arrow.definition.is_some()))
         );
         Ok(())
     }

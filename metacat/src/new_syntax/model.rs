@@ -28,18 +28,11 @@ pub struct File {
 
 /// A resolved theory in a loaded file.
 #[derive(Clone, Debug)]
-pub struct Theory {
-    pub id: TheoryId,
-    pub kind: TheoryKind,
-}
-
-/// The two kinds of theory currently supported by the loader.
-#[derive(Clone, Debug)]
-pub enum TheoryKind {
+pub enum Theory {
     /// The builtin `nat` syntax category.
     Nat,
-    /// A user-defined theory over some syntax category.
-    User {
+    /// A theory over some syntax category.
+    Theory {
         syntax: TheoryId,
         arrows: HashMap<Operation, TheoryArrow>,
     },
@@ -74,9 +67,9 @@ impl std::fmt::Display for TheoryId {
 
 impl Theory {
     pub fn get_arrow(&self, op: &Operation) -> Option<&TheoryArrow> {
-        match &self.kind {
-            TheoryKind::Nat => None,
-            TheoryKind::User { arrows, .. } => arrows.get(op),
+        match self {
+            Theory::Nat => None,
+            Theory::Theory { arrows, .. } => arrows.get(op),
         }
     }
 
