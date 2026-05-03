@@ -12,7 +12,7 @@
 use super::ast::{ParseRawError, RawFile};
 use super::model::{File, SignatureError, Term, Theory, TheoryArrow, TheoryId};
 use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
-use hexpr::{Operation, try_interpret};
+use hexpr::{Operation, Signature, try_interpret};
 use open_hypergraphs::category::Arrow;
 use open_hypergraphs::lax::OpenHypergraph;
 use std::collections::HashMap;
@@ -232,56 +232,67 @@ fn interpret_type_maps(
     theories: &HashMap<TheoryId, Theory>,
 ) -> Result<(Term, Term), LoadError> {
     if is_builtin_nat(syntax) {
-        let source = try_interpret(&NatObj, &type_maps.0)
-            .map(forget_labels)
-            .map(|term| term.map_edges(nat_key_to_operation))
-            .map_err(|source| LoadError::NatInterpret {
+        interpret_type_maps_with(
+            &NatObj,
+            type_maps,
+            nat_key_to_operation,
+            |source| LoadError::NatInterpret {
                 theory: theory.clone(),
                 arrow: arrow.clone(),
                 source,
-            })?;
-        let target = try_interpret(&NatObj, &type_maps.1)
-            .map(forget_labels)
-            .map(|term| term.map_edges(nat_key_to_operation))
-            .map_err(|source| LoadError::NatInterpret {
+            },
+            || LoadError::InvalidTypeMapDomain {
                 theory: theory.clone(),
                 arrow: arrow.clone(),
-                source,
-            })?;
-        if source.source() != target.source() {
-            return Err(LoadError::InvalidTypeMapDomain {
-                theory: theory.clone(),
-                arrow: arrow.clone(),
-            });
-        }
-        Ok((source, target))
+            },
+        )
     } else {
         let base_theory = theories
             .get(syntax)
             .expect("base theory should be resolved first");
         let signature = base_theory.local_signature();
-        let source = try_interpret(&signature, &type_maps.0)
-            .map(forget_labels)
-            .map_err(|source| LoadError::SyntaxInterpret {
+        interpret_type_maps_with(
+            &signature,
+            type_maps,
+            std::convert::identity,
+            |source| LoadError::SyntaxInterpret {
                 theory: theory.clone(),
                 arrow: arrow.clone(),
                 source,
-            })?;
-        let target = try_interpret(&signature, &type_maps.1)
-            .map(forget_labels)
-            .map_err(|source| LoadError::SyntaxInterpret {
+            },
+            || LoadError::InvalidTypeMapDomain {
                 theory: theory.clone(),
                 arrow: arrow.clone(),
-                source,
-            })?;
-        if source.source() != target.source() {
-            return Err(LoadError::InvalidTypeMapDomain {
-                theory: theory.clone(),
-                arrow: arrow.clone(),
-            });
-        }
-        Ok((source, target))
+            },
+        )
     }
+}
+
+fn interpret_type_maps_with<S, F, E, I>(
+    signature: &S,
+    type_maps: &(hexpr::Hexpr, hexpr::Hexpr),
+    map_edge: F,
+    map_error: E,
+    invalid_domain: I,
+) -> Result<(Term, Term), LoadError>
+where
+    S: Signature<Obj = ()>,
+    F: Fn(S::Arr) -> Operation + Copy,
+    E: Fn(hexpr::interpret::Error<S::Error>) -> LoadError + Copy,
+    I: Fn() -> LoadError + Copy,
+{
+    let source = try_interpret(signature, &type_maps.0)
+        .map(forget_labels)
+        .map(|term| term.map_edges(map_edge))
+        .map_err(map_error)?;
+    let target = try_interpret(signature, &type_maps.1)
+        .map(forget_labels)
+        .map(|term| term.map_edges(map_edge))
+        .map_err(map_error)?;
+    if source.source() != target.source() {
+        return Err(invalid_domain());
+    }
+    Ok((source, target))
 }
 
 fn forget_labels<T, A>(f: OpenHypergraph<T, A>) -> OpenHypergraph<(), A> {
