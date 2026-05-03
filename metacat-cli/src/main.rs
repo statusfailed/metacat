@@ -83,7 +83,10 @@ fn check_files(theory_name: String, paths: Vec<PathBuf>) -> anyhow::Result<()> {
 
     log::info!("checking definitions");
 
-    for (operation, declaration) in arrows.iter().filter(|(_, arrow)| arrow.definition.is_some()) {
+    for (operation, declaration) in arrows
+        .iter()
+        .filter(|(_, arrow)| arrow.definition.is_some())
+    {
         let mut term = declaration.definition.clone().unwrap();
         let (source, target) = declaration.type_maps.clone();
         log::info!("checking definition {}", operation);
