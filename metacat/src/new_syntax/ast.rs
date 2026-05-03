@@ -6,13 +6,14 @@
 //! - no cross-theory references have been resolved yet.
 //!
 //! This layer is responsible only for recognizing the expected hexpr shapes and
-//! collecting them into a file-level structure.
+//! collecting them into a mergeable set of raw theories.
 
 use hexpr::{Hexpr, Operation, ParseError, parse_hexprs};
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
-pub struct RawFile {
+pub struct RawTheorySet {
     pub theories: BTreeMap<Operation, RawTheory>,
 }
 
@@ -45,10 +46,26 @@ pub enum ParseRawError {
     DuplicateArrow { theory: Operation, arrow: Operation },
     #[error("Parse error: {0}")]
     Parse(#[from] ParseError),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
-impl RawFile {
-    /// Parse text into a [`RawFile`] consisting of zero or more top-level theory declarations
+#[derive(Debug, thiserror::Error)]
+pub enum MergeRawError {
+    #[error("Theory {0} is declared in multiple inputs")]
+    DuplicateTheory(Operation),
+    #[error("Theory {theory} has incompatible syntax categories: {left} vs {right}")]
+    SyntaxMismatch {
+        theory: Operation,
+        left: Operation,
+        right: Operation,
+    },
+    #[error("Theory {theory} declares arrow {arrow} multiple times")]
+    DuplicateArrow { theory: Operation, arrow: Operation },
+}
+
+impl RawTheorySet {
+    /// Parse text into a [`RawTheorySet`] consisting of zero or more top-level theory declarations.
     pub fn from_text(text: &str) -> Result<Self, ParseRawError> {
         let hexprs = parse_hexprs(text)?;
         let mut theories = BTreeMap::new();
@@ -66,9 +83,53 @@ impl RawFile {
 
         Ok(Self { theories })
     }
+
+    pub fn from_file(path: PathBuf) -> Result<Self, ParseRawError> {
+        let text = std::fs::read_to_string(path)?;
+        Self::from_text(&text)
+    }
+
+    pub fn merge(mut self, other: Self) -> Result<Self, MergeRawError> {
+        for (name, theory) in other.theories {
+            match self.theories.remove(&name) {
+                None => {
+                    self.theories.insert(name, theory);
+                }
+                Some(existing) => {
+                    let merged = existing.merge(theory)?;
+                    self.theories.insert(name, merged);
+                }
+            }
+        }
+
+        Ok(self)
+    }
 }
 
 impl RawTheory {
+    pub fn merge(mut self, other: Self) -> Result<Self, MergeRawError> {
+        debug_assert_eq!(self.name, other.name);
+
+        if self.syntax_category != other.syntax_category {
+            return Err(MergeRawError::SyntaxMismatch {
+                theory: self.name.clone(),
+                left: self.syntax_category.clone(),
+                right: other.syntax_category,
+            });
+        }
+
+        for (name, arrow) in other.arrows {
+            if self.arrows.insert(name.clone(), arrow).is_some() {
+                return Err(MergeRawError::DuplicateArrow {
+                    theory: self.name.clone(),
+                    arrow: name,
+                });
+            }
+        }
+
+        Ok(self)
+    }
+
     fn try_from_hexpr(hexpr: Hexpr) -> Option<Self> {
         let Hexpr::Composition(parts) = hexpr else {
             return None;
@@ -212,7 +273,7 @@ mod tests {
 
     #[test]
     fn parse_raw_file() -> Result<(), Box<dyn std::error::Error>> {
-        let raw = RawFile::from_text(
+        let raw = RawTheorySet::from_text(
             r#"
             (theory fol.syntax nat {
               (arr wff : 1 -> 1)
@@ -234,7 +295,7 @@ mod tests {
 
     #[test]
     fn invalid_theory_reports_error() {
-        let err = RawFile::from_text(
+        let err = RawTheorySet::from_text(
             r#"
             (theory fol.syntax nat
               (arr wff : 1 -> 1)
@@ -245,5 +306,50 @@ mod tests {
 
         eprintln!("invalid theory parse error: {err}");
         assert!(matches!(err, ParseRawError::InvalidTheoryDeclaration(_)));
+    }
+
+    #[test]
+    fn raw_theory_sets_merge() -> Result<(), Box<dyn std::error::Error>> {
+        let lhs = RawTheorySet::from_text(
+            r#"
+            (theory fol.syntax nat {
+              (arr wff : 1 -> 1)
+            })
+            "#,
+        )?;
+        let rhs = RawTheorySet::from_text(
+            r#"
+            (theory fol.syntax nat {
+              (arr -> : 2 -> 1)
+            })
+            "#,
+        )?;
+
+        let merged = lhs.merge(rhs)?;
+        let theory = merged.theories.get(&"fol.syntax".parse()?).unwrap();
+        assert_eq!(theory.arrows.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn merge_rejects_duplicate_arrows() -> Result<(), Box<dyn std::error::Error>> {
+        let lhs = RawTheorySet::from_text(
+            r#"
+            (theory fol.syntax nat {
+              (arr wff : 1 -> 1)
+            })
+            "#,
+        )?;
+        let rhs = RawTheorySet::from_text(
+            r#"
+            (theory fol.syntax nat {
+              (arr wff : 1 -> 1)
+            })
+            "#,
+        )?;
+
+        let err = lhs.merge(rhs).unwrap_err();
+        assert!(matches!(err, MergeRawError::DuplicateArrow { .. }));
+        Ok(())
     }
 }

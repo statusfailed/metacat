@@ -9,8 +9,8 @@
 //! The result is a resolved [`super::model::File`] whose theories are ready for
 //! downstream checking and tooling.
 
-use super::ast::{ParseRawError, RawFile};
-use super::model::{File, SignatureError, Term, Theory, TheoryArrow, TheoryId};
+use super::ast::{MergeRawError, ParseRawError, RawTheorySet};
+use super::model::{SignatureError, Term, Theory, TheoryArrow, TheoryId, TheorySet};
 use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
 use hexpr::{Operation, Signature, try_interpret};
 use open_hypergraphs::category::Arrow;
@@ -22,8 +22,8 @@ use std::path::PathBuf;
 pub enum LoadError {
     #[error(transparent)]
     ParseRaw(#[from] ParseRawError),
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    MergeRaw(#[from] MergeRawError),
     #[error("Unknown syntax category {base} for theory {theory}")]
     UnknownSyntaxCategory { theory: TheoryId, base: Operation },
     #[error("Cycle detected in syntax-category dependencies involving {0}")]
@@ -53,19 +53,56 @@ pub enum LoadError {
     InvalidTypeMapDomain { theory: TheoryId, arrow: Operation },
 }
 
-impl File {
+impl TheorySet {
     pub fn from_text(text: &str) -> Result<Self, LoadError> {
-        let raw = RawFile::from_text(text)?;
-        resolve_raw_file(raw)
+        let raw = RawTheorySet::from_text(text)?;
+        resolve_raw_theory_set(raw)
     }
 
     pub fn from_file(path: PathBuf) -> Result<Self, LoadError> {
-        let text = std::fs::read_to_string(path)?;
-        Self::from_text(&text)
+        let raw = RawTheorySet::from_file(path)?;
+        resolve_raw_theory_set(raw)
+    }
+
+    /// Parse and merge multiple source strings before resolving theory references.
+    ///
+    /// This allows theories in one source string to refer to theories declared
+    /// in another, as long as the merged raw theory set has no conflicts.
+    pub fn from_texts<'a, I>(texts: I) -> Result<Self, LoadError>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        let raw = merge_raw_sets(texts.into_iter().map(RawTheorySet::from_text))?;
+        resolve_raw_theory_set(raw)
+    }
+
+    /// Parse and merge multiple files before resolving theory references.
+    ///
+    /// This allows theories in one file to refer to theories declared in
+    /// another, as long as the merged raw theory set has no conflicts.
+    pub fn from_files<I>(paths: I) -> Result<Self, LoadError>
+    where
+        I: IntoIterator<Item = PathBuf>,
+    {
+        let raw = merge_raw_sets(paths.into_iter().map(RawTheorySet::from_file))?;
+        resolve_raw_theory_set(raw)
     }
 }
 
-fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
+fn merge_raw_sets<I>(sets: I) -> Result<RawTheorySet, LoadError>
+where
+    I: IntoIterator<Item = Result<RawTheorySet, ParseRawError>>,
+{
+    let mut merged = RawTheorySet {
+        theories: BTreeMap::new(),
+    };
+    for set in sets {
+        merged = merged.merge(set?)?;
+    }
+    Ok(merged)
+}
+
+fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
     let nat_id = builtin_nat_theory_id();
     // Reserve an id for the builtin `nat` theory alongside user-defined names so
     // later resolution can treat syntax references uniformly.
@@ -134,7 +171,7 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
                         source,
                     })?;
                 theory
-                    .user_arrows_mut()
+                    .arrows_mut()
                     .expect("user theory should have arrows")
                     .get_mut(&raw_arrow.name)
                     .expect("missing local arrow")
@@ -145,11 +182,11 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
         theories.insert(theory_id, theory);
     }
 
-    Ok(File { theories })
+    Ok(TheorySet { theories })
 }
 
 fn resolve_syntax_bases(
-    raw: &RawFile,
+    raw: &RawTheorySet,
     theory_ids: &HashMap<Operation, TheoryId>,
 ) -> Result<HashMap<TheoryId, TheoryId>, LoadError> {
     let nat_id = builtin_nat_theory_id();
@@ -319,7 +356,7 @@ fn nat_key_to_operation(key: NatKey) -> Operation {
 }
 
 impl Theory {
-    fn user_arrows_mut(&mut self) -> Option<&mut BTreeMap<Operation, TheoryArrow>> {
+    fn arrows_mut(&mut self) -> Option<&mut BTreeMap<Operation, TheoryArrow>> {
         match self {
             Theory::Nat => None,
             Theory::Theory { arrows, .. } => Some(arrows),
@@ -333,7 +370,7 @@ mod tests {
 
     #[test]
     fn loads_multiple_theories() -> Result<(), Box<dyn std::error::Error>> {
-        let file = File::from_text(
+        let file = TheorySet::from_text(
             r#"
             (theory fol.syntax nat {
               (arr wff : 1 -> 1)
@@ -371,8 +408,33 @@ mod tests {
     }
 
     #[test]
+    fn loads_from_multiple_texts() -> Result<(), Box<dyn std::error::Error>> {
+        let file = TheorySet::from_texts([
+            r#"
+            (theory fol.syntax nat {
+              (arr wff : 1 -> 1)
+              (arr -> : 2 -> 1)
+            })
+            "#,
+            r#"
+            (theory fol.proof fol.syntax {
+              (arr wi : {wff wff} -> (-> wff))
+            })
+            "#,
+        ])?;
+
+        let syntax_id = TheoryId("fol.syntax".parse()?);
+        let proof_id = TheoryId("fol.proof".parse()?);
+        assert!(matches!(
+            file.theories.get(&proof_id),
+            Some(Theory::Theory { syntax, arrows }) if *syntax == syntax_id && arrows.len() == 1
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn rejects_dependency_cycles() -> Result<(), Box<dyn std::error::Error>> {
-        let err = File::from_text(
+        let err = TheorySet::from_text(
             r#"
             (theory a b {
               (arr f : 1 -> 1)
@@ -390,7 +452,7 @@ mod tests {
 
     #[test]
     fn rejects_unknown_syntax_base() -> Result<(), Box<dyn std::error::Error>> {
-        let err = File::from_text(
+        let err = TheorySet::from_text(
             r#"
             (theory a missing {
               (arr f : 1 -> 1)

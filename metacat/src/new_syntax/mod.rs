@@ -12,9 +12,9 @@
 //! A complete file can be loaded directly from a string:
 //!
 //! ```rust
-//! use metacat::new_syntax::{File, Theory, TheoryId};
+//! use metacat::new_syntax::{Theory, TheoryId, TheorySet};
 //!
-//! let file = File::from_text(
+//! let file = TheorySet::from_text(
 //!     r#"
 //!     (theory fol.syntax nat {
 //!       (arr wff : 1 -> 1)
@@ -38,6 +38,30 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
+//! Multiple source strings can be loaded together before resolution:
+//!
+//! ```rust
+//! use metacat::new_syntax::{Theory, TheoryId, TheorySet};
+//!
+//! let file = TheorySet::from_texts([
+//!     r#"
+//!     (theory fol.syntax nat {
+//!       (arr wff : 1 -> 1)
+//!       (arr -> : 2 -> 1)
+//!     })
+//!     "#,
+//!     r#"
+//!     (theory fol.proof fol.syntax {
+//!       (arr wi : {wff wff} -> (-> wff))
+//!     })
+//!     "#,
+//! ])?;
+//!
+//! let proof_id = TheoryId("fol.proof".parse()?);
+//! assert!(matches!(file.theories.get(&proof_id), Some(Theory::Theory { .. })));
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
 //! The implementation is split into:
 //! - [`ast`], which parses raw hexprs into a file-level AST;
 //! - [`nat`], which defines the builtin `nat` syntax category;
@@ -50,6 +74,6 @@ pub mod load;
 pub mod model;
 pub mod nat;
 
-pub use ast::{RawFile, RawTheory, RawTheoryArrow};
+pub use ast::{MergeRawError, RawTheorySet};
 pub use load::LoadError;
-pub use model::{File, Term, Theory, TheoryArrow, TheoryId};
+pub use model::{Term, Theory, TheoryArrow, TheoryId, TheorySet};

@@ -22,7 +22,7 @@ pub struct TheoryId(pub Operation);
 
 /// Fully resolved contents of a multi-theory source file.
 #[derive(Clone, Debug)]
-pub struct File {
+pub struct TheorySet {
     pub theories: BTreeMap<TheoryId, Theory>,
 }
 
