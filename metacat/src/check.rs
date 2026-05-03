@@ -5,10 +5,11 @@ use std::fmt::Debug;
 use thiserror::Error;
 
 //use crate::ssa::{SSA, ssa};
+use crate::new_syntax::Theory;
 use crate::ssa::{SSAError, ssa};
-use crate::theory::{OperationKey, Theory};
 use crate::tree::*;
 use crate::{dual, dual::Dual};
+use hexpr::Operation;
 
 #[derive(Debug, Error)]
 pub enum Error<O> {
@@ -37,13 +38,13 @@ pub enum EvalError {
     MatchError(EdgeId, String),
 }
 
-/// Typecheck a term, returning an assignment of "types" to each of its nodes
-pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
-    theory: &Theory<O>, // *arrow* theory
-    source: OpenHypergraph<(), O>,
-    target: OpenHypergraph<(), O>,
-    arrow: &mut OpenHypergraph<(), OperationKey>,
-) -> Result<Vec<Tree<(), O>>, Error<O>> {
+/// Typecheck a term, returning an assignment of "types" to each of its nodes.
+pub fn check(
+    theory: &Theory,
+    source: OpenHypergraph<(), Operation>,
+    target: OpenHypergraph<(), Operation>,
+    arrow: &mut OpenHypergraph<(), Operation>,
+) -> Result<Vec<Tree<(), Operation>>, Error<Operation>> {
     //////////////////////////////////////////
     // Compute the *type map* `source ; arrow.s† ; arrow.t ; target†`
     let mut fwd = dual::into_fwd(source);
@@ -59,7 +60,7 @@ pub fn check<O: Eq + Clone + Debug + std::fmt::Display>(
     let mut type_term = fwd
         .lax_compose(&type_map)
         .and_then(|f| f.lax_compose(&rev))
-        .ok_or(Error::<O>::InvalidTypeMaps)?;
+        .ok_or(Error::<Operation>::InvalidTypeMaps)?;
 
     //////////////////////////////////////////
     // Compute types, then select only those from nodes corresponding to nodes in the original term
@@ -195,21 +196,21 @@ pub fn merge<O: Debug + Eq>(
 
 /// Map generating arrows of a Theory into the composites `(src† ; tgt)`
 #[derive(Clone)]
-struct AsType<'a, O>(pub &'a Theory<O>);
+struct AsType<'a>(pub &'a Theory);
 
-// wi, wn both are OperationKey
-impl<O: Clone> Functor<(), OperationKey, (), Dual<O>> for AsType<'_, O> {
+impl Functor<(), Operation, (), Dual<Operation>> for AsType<'_> {
     fn map_object(&self, _: &()) -> impl ExactSizeIterator<Item = ()> {
         vec![()].into_iter()
     }
 
     fn map_operation(
         &self,
-        a: &OperationKey,
+        a: &Operation,
         source: &[()],
         target: &[()],
-    ) -> OpenHypergraph<(), Dual<O>> {
-        let (s, t) = self.0.type_maps(a);
+    ) -> OpenHypergraph<(), Dual<Operation>> {
+        let arrow = self.0.get_arrow(a).expect("missing arrow in theory");
+        let (s, t) = &arrow.type_maps;
 
         // assert source/target consistent with syntax
         assert_eq!(source.len(), s.targets.len());
@@ -220,7 +221,7 @@ impl<O: Clone> Functor<(), OperationKey, (), Dual<O>> for AsType<'_, O> {
             .unwrap()
     }
 
-    fn map_arrow(&self, f: &OpenHypergraph<(), OperationKey>) -> OpenHypergraph<(), Dual<O>> {
+    fn map_arrow(&self, f: &OpenHypergraph<(), Operation>) -> OpenHypergraph<(), Dual<Operation>> {
         functor::try_define_map_arrow(self, f).unwrap()
     }
 }
