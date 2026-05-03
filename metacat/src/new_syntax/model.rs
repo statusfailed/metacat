@@ -11,19 +11,19 @@
 
 use hexpr::{Operation, Signature};
 use open_hypergraphs::lax::OpenHypergraph;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 /// An interpreted term in either a syntax base or a resolved theory.
 pub type Term = OpenHypergraph<(), Operation>;
 
 /// Stable identifier for a resolved theory within a loaded file.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TheoryId(pub Operation);
 
 /// Fully resolved contents of a multi-theory source file.
 #[derive(Clone, Debug)]
 pub struct File {
-    pub theories: HashMap<TheoryId, Theory>,
+    pub theories: BTreeMap<TheoryId, Theory>,
 }
 
 /// A resolved theory in a loaded file.
@@ -34,7 +34,7 @@ pub enum Theory {
     /// A theory over some syntax category.
     Theory {
         syntax: TheoryId,
-        arrows: HashMap<Operation, TheoryArrow>,
+        arrows: BTreeMap<Operation, TheoryArrow>,
     },
 }
 

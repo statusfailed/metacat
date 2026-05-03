@@ -9,18 +9,18 @@
 //! collecting them into a file-level structure.
 
 use hexpr::{Hexpr, Operation, ParseError, parse_hexprs};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct RawFile {
-    pub theories: HashMap<Operation, RawTheory>,
+    pub theories: BTreeMap<Operation, RawTheory>,
 }
 
 #[derive(Clone, Debug)]
 pub struct RawTheory {
     pub name: Operation,
     pub syntax_category: Operation,
-    pub arrows: HashMap<Operation, RawTheoryArrow>,
+    pub arrows: BTreeMap<Operation, RawTheoryArrow>,
 }
 
 #[derive(Clone, Debug)]
@@ -51,7 +51,7 @@ impl RawFile {
     /// Parse text into a [`RawFile`] consisting of zero or more top-level theory declarations
     pub fn from_text(text: &str) -> Result<Self, ParseRawError> {
         let hexprs = parse_hexprs(text)?;
-        let mut theories = HashMap::new();
+        let mut theories = BTreeMap::new();
 
         for hexpr in hexprs {
             let theory = RawTheory::try_from_hexpr(hexpr.clone())
@@ -92,7 +92,7 @@ impl RawTheory {
             return None;
         };
 
-        let mut arrows = HashMap::new();
+        let mut arrows = BTreeMap::new();
         for declaration in body {
             let arrow = RawTheoryArrow::try_from_hexpr(declaration.clone())?;
             if arrows.insert(arrow.name.clone(), arrow.clone()).is_some() {
@@ -135,7 +135,7 @@ impl RawTheory {
             return Err(ParseRawError::InvalidTheoryDeclaration(hexpr));
         };
 
-        let mut arrows = HashMap::new();
+        let mut arrows = BTreeMap::new();
         for declaration in body {
             let arrow = RawTheoryArrow::try_from_hexpr(declaration.clone()).ok_or_else(|| {
                 ParseRawError::InvalidArrowDeclaration {

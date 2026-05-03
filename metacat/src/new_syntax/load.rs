@@ -15,7 +15,7 @@ use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
 use hexpr::{Operation, Signature, try_interpret};
 use open_hypergraphs::category::Arrow;
 use open_hypergraphs::lax::OpenHypergraph;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
@@ -82,7 +82,7 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
 
     let syntax_bases = resolve_syntax_bases(&raw, &theory_ids)?;
     let order = topological_order(&syntax_bases)?;
-    let mut theories = HashMap::new();
+    let mut theories = BTreeMap::new();
 
     for theory_id in order {
         // Each theory is loaded only after its syntax theory has already been
@@ -100,7 +100,7 @@ fn resolve_raw_file(raw: RawFile) -> Result<File, LoadError> {
             continue;
         };
 
-        let mut arrows = HashMap::new();
+        let mut arrows = BTreeMap::new();
         for raw_arrow in raw_theory.arrows.values() {
             let type_maps = interpret_type_maps(
                 &theory_id,
@@ -229,7 +229,7 @@ fn interpret_type_maps(
     arrow: &Operation,
     syntax: &TheoryId,
     type_maps: &(hexpr::Hexpr, hexpr::Hexpr),
-    theories: &HashMap<TheoryId, Theory>,
+    theories: &BTreeMap<TheoryId, Theory>,
 ) -> Result<(Term, Term), LoadError> {
     if is_builtin_nat(syntax) {
         interpret_type_maps_with(
@@ -319,7 +319,7 @@ fn nat_key_to_operation(key: NatKey) -> Operation {
 }
 
 impl Theory {
-    fn user_arrows_mut(&mut self) -> Option<&mut HashMap<Operation, TheoryArrow>> {
+    fn user_arrows_mut(&mut self) -> Option<&mut BTreeMap<Operation, TheoryArrow>> {
         match self {
             Theory::Nat => None,
             Theory::Theory { arrows, .. } => Some(arrows),
