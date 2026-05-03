@@ -12,7 +12,7 @@
 //! A complete file can be loaded directly from a string:
 //!
 //! ```rust
-//! use metacat::new_syntax::{Theory, TheoryId, TheorySet};
+//! use metacat::theory::{Theory, TheoryId, TheorySet};
 //!
 //! let file = TheorySet::from_text(
 //!     r#"
@@ -41,7 +41,7 @@
 //! Multiple source strings can be loaded together before resolution:
 //!
 //! ```rust
-//! use metacat::new_syntax::{Theory, TheoryId, TheorySet};
+//! use metacat::theory::{Theory, TheoryId, TheorySet};
 //!
 //! let file = TheorySet::from_texts([
 //!     r#"

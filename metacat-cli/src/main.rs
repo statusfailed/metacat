@@ -5,7 +5,7 @@ enum Orientation {
 }
 
 use metacat::check::check;
-use metacat::new_syntax::{Theory, TheoryId, TheorySet};
+use metacat::theory::{Theory, TheoryId, TheorySet};
 
 // CLI utils
 use clap::{Parser, Subcommand, ValueEnum};
