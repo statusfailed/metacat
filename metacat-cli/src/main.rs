@@ -211,7 +211,12 @@ fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
             let (source, target) = declaration.type_maps.clone();
             let result = check(theory, source, target, &mut term);
 
-            let coarity = |op: &Operation| -> usize { coarity_of(&theories, syntax, op) };
+            let syntax_theory = theories
+                .theories
+                .get(syntax)
+                .expect("syntax theory should be present");
+            let coarity =
+                |op: &Operation| -> usize { syntax_theory.coarity_of(op).expect("coarity lookup failed") };
 
             let labels: Vec<String> = match result {
                 Ok(types) => types.iter().map(|t| t.pretty(Some(&coarity))).collect(),
@@ -235,25 +240,4 @@ fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn coarity_of(theories: &TheorySet, syntax: &TheoryId, op: &Operation) -> usize {
-    let syntax_theory = theories
-        .theories
-        .get(syntax)
-        .expect("syntax theory should be present");
-
-    match syntax_theory {
-        Theory::Nat => op
-            .as_str()
-            .parse()
-            .expect("nat operation should be a decimal numeral"),
-        Theory::Theory { arrows, .. } => arrows
-            .get(op)
-            .expect("syntax operation missing from theory")
-            .type_maps
-            .1
-            .targets
-            .len(),
-    }
 }

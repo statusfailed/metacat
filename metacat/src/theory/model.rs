@@ -75,6 +75,17 @@ impl Theory {
         }
     }
 
+    // NOTE: a more general version of this would be a uniform arrow lookup API
+    // that can synthesize builtin nat arrows by name, while borrowing stored
+    // arrows from finite theories. For now, coarity lookup is the only caller
+    // that needs this behavior.
+    pub fn coarity_of(&self, op: &Operation) -> Option<usize> {
+        match self {
+            Theory::Nat => op.as_str().parse().ok(),
+            Theory::Theory { arrows, .. } => Some(arrows.get(op)?.type_maps.1.targets.len()),
+        }
+    }
+
     pub fn local_signature(&self) -> TheorySignature<'_> {
         TheorySignature { theory: self }
     }
