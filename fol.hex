@@ -1,208 +1,216 @@
 ################################################################################
-# a port of (some of) set.mm to metacat
+# a port of (some of) set.mm to metacat, using the new multi-theory syntax
 ################################################################################
 
-##############################################
-# well-formedness and provability judgements
-##############################################
+(theory fol.syntax nat {
+  ##############################################
+  # well-formedness and provability judgements
+  ##############################################
 
-# well-formedness
-(object wff : 1 -> 1)
+  # well-formedness
+  (arr wff : 1 -> 1)
 
-# provability
-(object |- : 1 -> 1)
+  # provability
+  (arr |- : 1 -> 1)
 
-# the "not" relation
-(object -. : 1 -> 1)
+  # the "not" relation
+  (arr -. : 1 -> 1)
 
-# implication
-(object -> : 2 -> 1)
+  # implication
+  (arr -> : 2 -> 1)
 
-##############################################
-# Syntactic axioms
-##############################################
+  ################################################################################
+  # First order logic syntax
+  ################################################################################
 
-# The negation of a wff is a wff
-(arrow wn : wff -> (-. wff))
+  # variables
+  (arr setvar : 1 -> 1)
 
-# implication of two wffs is a wff
-(arrow wi : {wff wff} -> (-> wff))
-
-################################################################################
-# The axioms of propositional calculus
-################################################################################
-
-# Modus ponens:
-#   h0 : |- φ
-#   h1 : |- φ → ψ
-# ----------------
-#   r0 : |- ψ
-(arrow ax-mp : {[ph ps.] # two metavars
-  ([.ph] |-)            # |- φ
-  ([.ph ps] -> |-)      # |- (φ → ψ)
-} -> ([ph ps . ps] |-)) # |- ψ
-
-# ax-1    ⊢ (𝜑 -> (𝜓 -> 𝜑))
-(arrow ax-1 : {wff wff} -> ([x y . x y x] {[x] ->} -> |-))
-
-# ⊢ ((𝜑 → (𝜓 → 𝜒)) → ((𝜑 → 𝜓) → (𝜑 → 𝜒)))
-(arrow ax-2 : {wff wff wff} -> {[ph ps ch.]
-  # ((𝜑 → (𝜓 → 𝜒))
-  ({[.ph] ([. ps ch] ->)} -> [lhs.])
-
-  # ((𝜑 → 𝜓) → (𝜑 → 𝜒)))
-  ({
-    ([. ph ps] ->)
-    ([. ph ch] ->)
-  } -> [rhs.])
-
-  ([.lhs rhs] -> |-)
+  # quantifiers
+  (arr forall : 2 -> 1)
 })
 
-################################################################################
-# proofs
-################################################################################
+(theory fol.proof fol.syntax {
+  ##############################################
+  # Syntactic axioms
+  ##############################################
 
-# ¬ (φ → ψ) is well-formed
-(def-arrow win : { wff wff } -> (-> -. wff) = (wi wn))
-(def-arrow win-shared : { wff } -> ([x . x x] -> -. wff) = ([x . x x] wi wn))
+  # The negation of a wff is a wff
+  (arr wn : wff -> (-. wff))
 
-########################################
-# proving the identity map
-########################################
+  # implication of two wffs is a wff
+  (arr wi : {wff wff} -> (-> wff))
 
-# given a well-formed formula phi, its "identity implication" (phi -> phi) is provable.
-# wff phi -> |- (phi -> phi)
-# we do this in 4 steps: p1 - p4.
-(def-arrow id : wff -> ([x . x x] -> |-) = ([x . x x] {p2 p4} ax-mp) )
+  ################################################################################
+  # The axioms of propositional calculus
+  ################################################################################
 
-# |- φ → ((φ→φ)→φ)
-(def-arrow p1 : wff -> {[ph.]
-  ([.ph ph] -> [id.])
-  ([. id ph] -> [x . ph x] -> |-)
-} = ([ph.ph ph] wi [id . ph id] ax-1)
-)
+  # Modus ponens:
+  #   h0 : |- φ
+  #   h1 : |- φ → ψ
+  # ----------------
+  #   r0 : |- ψ
+  (arr ax-mp : {[ph ps.] # two metavars
+    ([.ph] |-)            # |- φ
+    ([.ph ps] -> |-)      # |- (φ → ψ)
+  } -> ([ph ps . ps] |-)) # |- ψ
 
-# |- φ → (φ → φ)
-(def-arrow p2 : wff -> ([ph . ph ph] -> [i . ph i] -> |-) = {[ph.]
-  ([.ph ph] ax-1)               # ⊢ φ → (φ → φ)
-})
+  # ax-1    ⊢ (𝜑 -> (𝜓 -> 𝜑))
+  (arr ax-1 : {wff wff} -> ([x y . x y x] {[x] ->} -> |-))
 
-# |- (φ → ((φ→φ)→φ)) → ((φ → (φ→φ)) → (φ→φ))
-(def-arrow p3 : wff -> {[ph.]
-  ([. ph ph] -> [id.])    # φ → φ
-  ([. id ph] -> [x . ph x] -> [lhs.]) # φ → ((φ → φ) → φ)
-  ([. ph id] -> [y . y id] -> [rhs.]) # (φ → (φ → φ)) → (φ→φ)
-  ([. lhs rhs] -> |-)
-} =
-  ([ph. ph ph] wi [id . ph id ph] ax-2)
-)
+  # ⊢ ((𝜑 → (𝜓 → 𝜒)) → ((𝜑 → 𝜓) → (𝜑 → 𝜒)))
+  (arr ax-2 : {wff wff wff} -> {[ph ps ch.]
+    # ((𝜑 → (𝜓 → 𝜒))
+    ({[.ph] ([. ps ch] ->)} -> [lhs.])
 
-# |- (φ → (φ → φ)) → (φ → φ)
-(def-arrow p4 : wff -> {[ph.]
-  ([.ph ph] -> [id . ph id] -> [x . x id] -> |-)
-} =
-  ([ph . ph ph] {p1 p3} ax-mp)
-)
+    # ((𝜑 → 𝜓) → (𝜑 → 𝜒)))
+    ({
+      ([. ph ps] ->)
+      ([. ph ch] ->)
+    } -> [rhs.])
 
-# written by codex
-(def-arrow id-inline : wff -> ([x . x x] -> |-) =
-  ([x . x x]
-    {
-      {[ph.]
-        ([.ph ph] ax-1)
-      }
-      {[ph.]
-        ([.ph ph] wi [id.])
-        ([.ph id] ax-1 [lhs.])
-        ([.ph id ph] ax-2 [rhs.])
-        ([.lhs rhs] ax-mp)
-      }
-    }
-    ax-mp
+    ([.lhs rhs] -> |-)
+  })
+
+  ################################################################################
+  # proofs
+  ################################################################################
+
+  # ¬ (φ → ψ) is well-formed
+  (def win : { wff wff } -> (-> -. wff) = (wi wn))
+  (def win-shared : { wff } -> ([x . x x] -> -. wff) = ([x . x x] wi wn))
+
+  ########################################
+  # proving the identity map
+  ########################################
+
+  # given a well-formed formula phi, its "identity implication" (phi -> phi) is provable.
+  # wff phi -> |- (phi -> phi)
+  # we do this in 4 steps: p1 - p4.
+  (def id : wff -> ([x . x x] -> |-) = ([x . x x] {p2 p4} ax-mp) )
+
+  # |- φ → ((φ→φ)→φ)
+  (def p1 : wff -> {[ph.]
+    ([.ph ph] -> [id.])
+    ([. id ph] -> [x . ph x] -> |-)
+  } = ([ph.ph ph] wi [id . ph id] ax-1)
   )
-)
 
-################################################################################
-# First order logic
-# PROBLEMS BELOW: we never ask for 'wff φ' or 'var x' below - fix!
+  # |- φ → (φ → φ)
+  (def p2 : wff -> ([ph . ph ph] -> [i . ph i] -> |-) = {[ph.]
+    ([.ph ph] ax-1)               # ⊢ φ → (φ → φ)
+  })
 
-# variables
-(object setvar : 1 -> 1)
+  # |- (φ → ((φ→φ)→φ)) → ((φ → (φ→φ)) → (φ→φ))
+  (def p3 : wff -> {[ph.]
+    ([. ph ph] -> [id.])    # φ → φ
+    ([. id ph] -> [x . ph x] -> [lhs.]) # φ → ((φ → φ) → φ)
+    ([. ph id] -> [y . y id] -> [rhs.]) # (φ → (φ → φ)) → (φ→φ)
+    ([. lhs rhs] -> |-)
+  } =
+    ([ph. ph ph] wi [id . ph id ph] ax-2)
+  )
 
-# quantifiers
-(object forall : 2 -> 1)
+  # |- (φ → (φ → φ)) → (φ → φ)
+  (def p4 : wff -> {[ph.]
+    ([.ph ph] -> [id . ph id] -> [x . x id] -> |-)
+  } =
+    ([ph . ph ph] {p1 p3} ax-mp)
+  )
 
-# if x is a variable and ph is a wff, then ∀ x ph is a wff
-(arrow wal : {setvar wff} -> (forall wff))
+  # written by codex
+  (def id-inline : wff -> ([x . x x] -> |-) =
+    ([x . x x]
+      {
+        {[ph.]
+          ([.ph ph] ax-1)
+        }
+        {[ph.]
+          ([.ph ph] wi [id.])
+          ([.ph id] ax-1 [lhs.])
+          ([.ph id ph] ax-2 [rhs.])
+          ([.lhs rhs] ax-mp)
+        }
+      }
+      ax-mp
+    )
+  )
 
-# if |- φ, then |- ∀ x. φ
-(arrow ax-gen : {[x ph.]
-  ([.x] setvar)
-  ([.ph] wff)
-  ([.ph] |-)
-} -> (forall |-))
+  ################################################################################
+  # First order logic
+  # PROBLEMS BELOW: we never ask for 'wff φ' or 'var x' below - fix!
 
-# ax-5 in Metamath:
-#   |- (ph -> forall x ph)
-# with a distinct variable condition between x and ph.
-# We model that here by generating the setvar witness for x freshly,
-# so ax-5 itself does not require a `setvar x` premise wire.
-(arrow ax-5 : ([x ph . ph] wff) -> ([x ph.] { [.ph] ([.x ph] forall) } -> |-))
+  # if x is a variable and ph is a wff, then ∀ x ph is a wff
+  (arr wal : {setvar wff} -> (forall wff))
 
-# inference introducing an antecedent:
-#   if |- ph, then |- (ps -> ph)
-(def-arrow a1i : {[ph ps.]
-  ([.ph] wff)
-  ([.ps] wff)
-  ([.ph] |-)
-} -> ([ph ps . ps ph] -> |-) = {[wph wps aph.]
-  ([.wph wps] ax-1 [a1.])
-  ([.aph a1] ax-mp)
-})
+  # if |- φ, then |- ∀ x. φ
+  (arr ax-gen : {[x ph.]
+    ([.x] setvar)
+    ([.ph] wff)
+    ([.ph] |-)
+  } -> (forall |-))
 
-# ax-5 with an extra antecedent:
-#   |- (ph -> (ps -> forall x ps))
-(def-arrow gen2 : {[x y ph.]
-  ([.x] setvar)
-  ([.y] setvar)
-  ([.ph] wff)
-  ([.ph] |-)
-} -> {[x y ph.]
-  ([.y ph] forall [yph.])
-  ([.x yph] forall |-)
-} = {[x y wph ph.]
-  # axph : |- ∀ x . ph 
-  ([.x wph ph] ax-gen [axph.])
-  # waxph : wff |- ∀ x . ph 
-  ([.x wph] wal [waxph.])
-  # |- ∀ y . ∀ x . ph
-  ([.y waxph axph] ax-gen)
-})
+  # ax-5 in Metamath:
+  #   |- (ph -> forall x ph)
+  # with a distinct variable condition between x and ph.
+  # We model that here by generating the setvar witness for x freshly,
+  # so ax-5 itself does not require a `setvar x` premise wire.
+  (arr ax-5 : ([x ph . ph] wff) -> ([x ph.] { [.ph] ([.x ph] forall) } -> |-))
 
-# NOTE: because ax-5 uses a fresh variable (disjoint condition) we also need
-# this helper axiom that lets us conclude any provable formula is also
-# well-formed.
-# This is a conservative extension of the logic, but I think there's probably a
-# better way to support this in metacat...
-(arrow pw : |- -> wff)
+  # inference introducing an antecedent:
+  #   if |- ph, then |- (ps -> ph)
+  (def a1i : {[ph ps.]
+    ([.ph] wff)
+    ([.ps] wff)
+    ([.ph] |-)
+  } -> ([ph ps . ps ph] -> |-) = {[wph wps aph.]
+    ([.wph wps] ax-1 [a1.])
+    ([.aph a1] ax-mp)
+  })
 
-# ax-5 with an extra antecedent:
-#   |- (ph -> (ps -> forall x ps))
-(def-arrow ax5d : {[x ph ps.]
-  ([.ph] wff)
-  ([.ps] wff)
-} -> {[x ph ps.]
-  ([.x ps] forall [aps.])
-  ([.ps aps] -> [inner.])
-  ([.ph inner] -> |-)
-} = {[wph wps.]
-  # |- (ps -> forall x ps)
-  ([. wps] ax-5 [ps_imp_axps.])
+  # ax-5 with an extra antecedent:
+  #   |- (ph -> (ps -> forall x ps))
+  (def gen2 : {[x y ph.]
+    ([.x] setvar)
+    ([.y] setvar)
+    ([.ph] wff)
+    ([.ph] |-)
+  } -> {[x y ph.]
+    ([.y ph] forall [yph.])
+    ([.x yph] forall |-)
+  } = {[x y wph ph.]
+    # axph : |- ∀ x . ph
+    ([.x wph ph] ax-gen [axph.])
+    # waxph : wff |- ∀ x . ph
+    ([.x wph] wal [waxph.])
+    # |- ∀ y . ∀ x . ph
+    ([.y waxph axph] ax-gen)
+  })
 
-  # wff (ps -> forall x ps)
-  ([. ps_imp_axps] pw [wps_imp_axps.])
+  # NOTE: because ax-5 uses a fresh variable (disjoint condition) we also need
+  # this helper axiom that lets us conclude any provable formula is also
+  # well-formed.
+  # This is a conservative extension of the logic, but I think there's probably a
+  # better way to support this in metacat...
+  (arr pw : |- -> wff)
 
-  # |- (ph -> (ps -> forall x ps))
-  ([.wps_imp_axps wph ps_imp_axps] a1i)
+  # ax-5 with an extra antecedent:
+  #   |- (ph -> (ps -> forall x ps))
+  (def ax5d : {[x ph ps.]
+    ([.ph] wff)
+    ([.ps] wff)
+  } -> {[x ph ps.]
+    ([.x ps] forall [aps.])
+    ([.ps aps] -> [inner.])
+    ([.ph inner] -> |-)
+  } = {[wph wps.]
+    # |- (ps -> forall x ps)
+    ([. wps] ax-5 [ps_imp_axps.])
+
+    # wff (ps -> forall x ps)
+    ([. ps_imp_axps] pw [wps_imp_axps.])
+
+    # |- (ph -> (ps -> forall x ps))
+    ([.wps_imp_axps wph ps_imp_axps] a1i)
+  })
 })
