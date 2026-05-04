@@ -181,17 +181,23 @@ fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
         .get(&theory_id)
         .ok_or_else(|| anyhow::anyhow!("theory '{}' not found", theory_id))?;
     let Theory::Theory { syntax, arrows } = theory else {
-        anyhow::bail!("theory '{}' is builtin and has no definitional arrows", theory_id);
+        anyhow::bail!(
+            "theory '{}' is builtin and has no definitional arrows",
+            theory_id
+        );
     };
 
     let operation: Operation = name.parse()?;
-    let declaration = arrows
-        .get(&operation)
-        .ok_or_else(|| anyhow::anyhow!("definition '{}' not found in theory '{}'", name, theory_id))?;
-    let def_term = declaration
-        .definition
-        .clone()
-        .ok_or_else(|| anyhow::anyhow!("arrow '{}' in theory '{}' has no definition", name, theory_id))?;
+    let declaration = arrows.get(&operation).ok_or_else(|| {
+        anyhow::anyhow!("definition '{}' not found in theory '{}'", name, theory_id)
+    })?;
+    let def_term = declaration.definition.clone().ok_or_else(|| {
+        anyhow::anyhow!(
+            "arrow '{}' in theory '{}' has no definition",
+            name,
+            theory_id
+        )
+    })?;
 
     match format {
         ArrowFormat::Hexpr { .. } => {
@@ -220,9 +226,9 @@ fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
                     .iter()
                     .map(|t| {
                         t.try_pretty(Some(&|op: &Operation| {
-                            syntax_theory
-                                .coarity_of(op)
-                                .ok_or_else(|| anyhow::anyhow!("coarity lookup failed for operation '{op}'"))
+                            syntax_theory.coarity_of(op).ok_or_else(|| {
+                                anyhow::anyhow!("coarity lookup failed for operation '{op}'")
+                            })
                         }))
                     })
                     .collect::<anyhow::Result<_>>()?,

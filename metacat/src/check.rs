@@ -5,8 +5,8 @@ use std::fmt::Debug;
 use thiserror::Error;
 
 //use crate::ssa::{SSA, ssa};
-use crate::theory::Theory;
 use crate::ssa::{SSAError, ssa};
+use crate::theory::Theory;
 use crate::tree::*;
 use crate::{dual, dual::Dual};
 use hexpr::Operation;
