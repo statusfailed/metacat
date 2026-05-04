@@ -1,8 +1,7 @@
-//! Experimental loader and data model for the multi-theory surface syntax.
+//! Loader and data model for the multi-theory surface syntax.
 //!
-//! This module is intentionally additive: it does not replace the existing
-//! single-theory loader in [`crate::syntax`], but provides a separate parsing
-//! and resolution pipeline for files of the form:
+//! This module provides the primary parsing and resolution pipeline for files
+//! of the form:
 //!
 //! ```text
 //! (theory fol.syntax nat { ... })

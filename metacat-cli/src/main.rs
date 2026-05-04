@@ -215,11 +215,17 @@ fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
                 .theories
                 .get(syntax)
                 .expect("syntax theory should be present");
-            let coarity =
-                |op: &Operation| -> usize { syntax_theory.coarity_of(op).expect("coarity lookup failed") };
-
             let labels: Vec<String> = match result {
-                Ok(types) => types.iter().map(|t| t.pretty(Some(&coarity))).collect(),
+                Ok(types) => types
+                    .iter()
+                    .map(|t| {
+                        t.try_pretty(Some(&|op: &Operation| {
+                            syntax_theory
+                                .coarity_of(op)
+                                .ok_or_else(|| anyhow::anyhow!("coarity lookup failed for operation '{op}'"))
+                        }))
+                    })
+                    .collect::<anyhow::Result<_>>()?,
                 Err(e) => {
                     log::warn!("check failed: {e}");
                     vec![String::new(); term.hypergraph.nodes.len()]

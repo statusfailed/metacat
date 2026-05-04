@@ -270,9 +270,11 @@ fn interpret_type_maps(
     theories: &BTreeMap<TheoryId, Theory>,
 ) -> Result<(Term, Term), LoadError> {
     if is_builtin_nat(syntax) {
-        // normalize nat syntax so that "2" means "{1 1}".
-        // More concretely, each numeral `n` is taken to be a definition standing for `{1 ..n.. 1}`
-        // see nat.rs for more details.
+        // Normalize builtin nat notation before interpretation:
+        // each numeral `n` is treated as shorthand for the n-fold tensor
+        // `{1 ..n.. 1}`.
+        // More precisely: Nat is assumed to have a definition `n` for each natural number n, which
+        // is auto-expanded at interpretation time.
         let normalized = (
             normalize_nat_hexpr(&type_maps.0),
             normalize_nat_hexpr(&type_maps.1),
