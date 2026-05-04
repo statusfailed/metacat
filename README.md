@@ -12,12 +12,18 @@ Check all definitions in a theory across one or more files:
 for example:
 
     > metacat check fol.proof fol.hex
+    [✓] a1i : {[ph ps . ] ([ . ph] wff) ([ . ps] wff) ([ . ph] |-)} -> ([ph ps . ps ph] -> |-)
+    [✓] ax5d : {[x ph ps . ] ([ . ph] wff) ([ . ps] wff)} -> {[x ph ps . ] ([ . x ps] forall [aps . ]) ([ . ps aps] -> [inner . ]) ([ . ph inner] -> |-)}
+    [✓] gen2 : {[x y ph . ] ([ . x] setvar) ([ . y] setvar) ([ . ph] wff) ([ . ph] |-)} -> {[x y ph . ] ([ . y ph] forall [yph . ]) ([ . x yph] forall |-)}
+    [✓] id : wff -> ([x . x x] -> |-)
+    [✓] id-inline : wff -> ([x . x x] -> |-)
     [✓] p1 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> |-)}
     [✓] p2 : wff -> ([ph . ph ph] -> [i . ph i] -> |-)
-    [✓] win : {wff wff} -> (-> -. wff)
     [✓] p3 : wff -> {[ph . ] ([ . ph ph] -> [id . ]) ([ . id ph] -> [x . ph x] -> [lhs . ]) ([ . ph id] -> [y . y id] -> [rhs . ]) ([ . lhs rhs] -> |-)}
     [✓] p4 : wff -> {[ph . ] ([ . ph ph] -> [id . ph id] -> [x . x id] -> |-)}
-    [✓] id : wff -> ([x . x x] -> |-)
+    [✓] win : {wff wff} -> (-> -. wff)
+    [✓] win-shared : {wff} -> ([x . x x] -> -. wff)
+
 
 # language
 
