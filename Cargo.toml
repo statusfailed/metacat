@@ -3,6 +3,6 @@ members = ["metacat", "metacat-cli"]
 resolver = "2"
 
 [workspace.dependencies]
-hexpr = "0.2.1"
+hexpr = "0.2.2"
 open-hypergraphs = "0.3.0"
 thiserror = "2.0.17"

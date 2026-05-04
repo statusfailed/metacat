@@ -4,12 +4,10 @@ enum Orientation {
     TB,
 }
 
-use hexpr::*;
+use hexpr::Operation;
 use metacat::check::check;
-use metacat::syntax::TheoryBundle;
-use metacat::theory::OperationKey;
+use metacat::theory::{Theory, TheoryId, TheorySet};
 use open_hypergraphs::strict::vec::FiniteFunction;
-
 use thiserror::Error;
 
 // CLI utils
@@ -45,7 +43,9 @@ struct Cli {
 enum Command {
     Check {
         #[arg()]
-        path: PathBuf,
+        theory_name: String,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
     },
     Arrow {
         #[command(subcommand)]
@@ -57,15 +57,19 @@ enum Command {
 enum ArrowFormat {
     Hexpr {
         #[arg()]
-        path: PathBuf,
+        theory_name: String,
         #[arg()]
         name: String,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
     },
     Svg {
         #[arg()]
-        path: PathBuf,
+        theory_name: String,
         #[arg()]
         name: String,
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
         #[arg(short, long, value_enum, default_value_t = Orientation::LR)]
         orientation: Orientation,
     },
@@ -98,39 +102,35 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Command::Check { path } => check_file(path),
+        Command::Check { theory_name, paths } => check_files(theory_name, paths),
         Command::Arrow { format } => arrow(format),
     }
 }
 
-/// Read a file of `Declaration`s into object and arrow theories,
+/// Read one or more files of `Declaration`s into object and arrow theories,
 /// then check all definitions.
-fn check_file(path: PathBuf) -> anyhow::Result<()> {
-    let TheoryBundle {
-        object_theory,
-        arrow_theory,
-        definitions,
-        ..
-    } = TheoryBundle::from_file(path)?;
+fn check_files(theory_name: String, paths: Vec<PathBuf>) -> anyhow::Result<()> {
+    let theories = TheorySet::from_files(paths)?;
+    let theory_id = TheoryId(theory_name.parse()?);
+    let theory = theories
+        .theories
+        .get(&theory_id)
+        .ok_or_else(|| anyhow::anyhow!("theory '{}' not found", theory_id))?;
+    let Theory::Theory { arrows, .. } = theory else {
+        anyhow::bail!("theory '{}' is builtin and cannot be checked", theory_id);
+    };
 
     log::info!("checking definitions");
 
-    for (operation, declaration) in &definitions {
-        let def_hexpr = declaration.definition.as_ref().unwrap(); // Safe because we only store definitions with Some(hexpr)
-        log::info!(
-            "checking definition {} : {} -> {} = {}",
-            operation,
-            declaration.source_map,
-            declaration.target_map,
-            def_hexpr
-        );
+    for (operation, declaration) in arrows
+        .iter()
+        .filter(|(_, arrow)| arrow.definition.is_some())
+    {
+        let mut term = declaration.definition.clone().unwrap();
+        let (source, target) = declaration.type_maps.clone();
+        log::info!("checking definition {}", operation);
 
-        // NOTE: we use forget_labels instead of unify, since we have a single-sorted theory.
-        let mut term = forget_labels(try_interpret(&arrow_theory, def_hexpr)?);
-        let source = forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
-        let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
-
-        let result = check(&arrow_theory, source, target, &mut term);
+        let result = check(theory, source, target, &mut term);
         log::debug!("check: {:?}", result);
 
         match result {
@@ -139,8 +139,8 @@ fn check_file(path: PathBuf) -> anyhow::Result<()> {
                     "{} {} : {} -> {}",
                     "[✓]".green(),
                     declaration.name,
-                    declaration.source_map,
-                    declaration.target_map
+                    declaration.raw.type_maps.0,
+                    declaration.raw.type_maps.1
                 );
             }
             Err(e) => {
@@ -148,8 +148,8 @@ fn check_file(path: PathBuf) -> anyhow::Result<()> {
                     "{} {} : {} -> {}",
                     "[✗]".red(),
                     declaration.name,
-                    declaration.source_map,
-                    declaration.target_map
+                    declaration.raw.type_maps.0,
+                    declaration.raw.type_maps.1
                 );
                 println!("Checking '{}' failed: {}", declaration.name, e);
             }
@@ -159,75 +159,97 @@ fn check_file(path: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Load theories from a file and print the hexpr for a given arrow name
 fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
-    let (path, name) = match &format {
-        ArrowFormat::Hexpr { path, name } | ArrowFormat::Svg { path, name, .. } => {
-            (path.clone(), name.clone())
+    let (theory_name, name, paths) = match &format {
+        ArrowFormat::Hexpr {
+            theory_name,
+            name,
+            paths,
         }
+        | ArrowFormat::Svg {
+            theory_name,
+            name,
+            paths,
+            ..
+        } => (theory_name.clone(), name.clone(), paths.clone()),
     };
 
-    log::info!("Loading theories to find arrow: {}", name);
-    let bundle = TheoryBundle::from_file(path)?;
+    let theories = TheorySet::from_files(paths)?;
+    let theory_id = TheoryId(theory_name.parse()?);
+    let theory = theories
+        .theories
+        .get(&theory_id)
+        .ok_or_else(|| anyhow::anyhow!("theory '{}' not found", theory_id))?;
+    let Theory::Theory { syntax, arrows } = theory else {
+        anyhow::bail!(
+            "theory '{}' is builtin and has no definitional arrows",
+            theory_id
+        );
+    };
 
-    // Try to find the operation in the arrow theory
-    let operation = &name.parse()?;
+    let operation: Operation = name.parse()?;
+    let declaration = arrows.get(&operation).ok_or_else(|| {
+        anyhow::anyhow!("definition '{}' not found in theory '{}'", name, theory_id)
+    })?;
+    let def_term = declaration.definition.clone().ok_or_else(|| {
+        anyhow::anyhow!(
+            "arrow '{}' in theory '{}' has no definition",
+            name,
+            theory_id
+        )
+    })?;
 
-    // Look for a definition with the given name
-    if let Some(declaration) = bundle.definitions.get(operation) {
-        let def_hexpr = declaration.definition.as_ref().unwrap(); // Safe because we only store definitions with Some(hexpr)
-        match format {
-            ArrowFormat::Hexpr { .. } => {
-                println!("{}", def_hexpr);
-            }
-            ArrowFormat::Svg { orientation, .. } => {
-                // Render an SVG of the term. We try to compute types if possible, and fall back to
-                // unlabeled nodes if checking fails.
-                use open_hypergraphs_dot::{Options, svg::to_svg_with};
-                use std::io::Write;
-                let object_theory = bundle.object_theory;
-                let mut term = forget_labels(try_interpret(&bundle.arrow_theory, def_hexpr)?);
-                term.quotient().map_err(QuotientError)?;
-                let source = forget_labels(try_interpret(&object_theory, &declaration.source_map)?);
-                let target = forget_labels(try_interpret(&object_theory, &declaration.target_map)?);
-
-                // Compute types for each node of the open hypergraph
-                let result = check(&bundle.arrow_theory, source, target, &mut term);
-
-                // Tell pretty-printer the coarity of each operation
-                let coarity =
-                    |op: &OperationKey| -> usize { object_theory.type_maps(op).1.targets.len() };
-
-                // Pretty-print computed type trees
-                let labels: Vec<String> = match result {
-                    Ok(types) => types.iter().map(|t| t.pretty(Some(&coarity))).collect(),
-                    Err(e) => {
-                        log::warn!("check failed: {e}");
-                        vec![String::new(); term.hypergraph.nodes.len()]
-                    }
-                };
-
-                let mut opts = Options::default().display();
-                opts.orientation = match orientation {
-                    Orientation::LR => open_hypergraphs_dot::Orientation::LR,
-                    Orientation::TB => open_hypergraphs_dot::Orientation::TB,
-                };
-
-                std::io::stdout().write_all(&to_svg_with(
-                    &term.with_nodes(|_| labels).expect("labels length mismatch"),
-                    &opts,
-                )?)?;
-            }
+    match format {
+        ArrowFormat::Hexpr { .. } => {
+            let raw_def = declaration
+                .raw
+                .definition
+                .as_ref()
+                .expect("resolved definitional arrow should retain raw definition");
+            println!("{raw_def}");
         }
-    } else {
-        return Err(anyhow::anyhow!("definition '{}' not found", name));
+        ArrowFormat::Svg { orientation, .. } => {
+            use open_hypergraphs_dot::{Options, svg::to_svg_with};
+            use std::io::Write;
+
+            let mut term = def_term;
+            term.quotient().map_err(QuotientError)?;
+            let (source, target) = declaration.type_maps.clone();
+            let result = check(theory, source, target, &mut term);
+
+            let syntax_theory = theories
+                .theories
+                .get(syntax)
+                .expect("syntax theory should be present");
+            let labels: Vec<String> = match result {
+                Ok(types) => types
+                    .iter()
+                    .map(|t| {
+                        t.try_pretty(Some(&|op: &Operation| {
+                            syntax_theory.coarity_of(op).ok_or_else(|| {
+                                anyhow::anyhow!("coarity lookup failed for operation '{op}'")
+                            })
+                        }))
+                    })
+                    .collect::<anyhow::Result<_>>()?,
+                Err(e) => {
+                    log::warn!("check failed: {e}");
+                    vec![String::new(); term.hypergraph.nodes.len()]
+                }
+            };
+
+            let mut opts = Options::default().display();
+            opts.orientation = match orientation {
+                Orientation::LR => open_hypergraphs_dot::Orientation::LR,
+                Orientation::TB => open_hypergraphs_dot::Orientation::TB,
+            };
+
+            std::io::stdout().write_all(&to_svg_with(
+                &term.with_nodes(|_| labels).expect("labels length mismatch"),
+                &opts,
+            )?)?;
+        }
     }
 
     Ok(())
-}
-
-fn forget_labels<T, A>(
-    f: open_hypergraphs::lax::OpenHypergraph<T, A>,
-) -> open_hypergraphs::lax::OpenHypergraph<(), A> {
-    f.map_nodes(|_| ())
 }
