@@ -15,6 +15,7 @@ use std::path::PathBuf;
 #[derive(Clone, Debug)]
 pub struct RawTheorySet {
     pub theories: BTreeMap<Operation, RawTheory>,
+    pub extensions: Vec<Extension>,
 }
 
 #[derive(Clone, Debug)]
@@ -31,6 +32,19 @@ pub struct RawTheoryArrow {
     pub definition: Option<Hexpr>,
 }
 
+#[derive(Clone, Debug)]
+/// A conservative raw extension of an existing theory by fresh definitions.
+pub struct Extension {
+    pub theory: Operation,
+    pub arrows: BTreeMap<Operation, RawTheoryArrow>,
+}
+
+#[derive(Clone, Debug)]
+enum RawTopLevel {
+    Theory(RawTheory),
+    Extension(Extension),
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ParseRawError {
     #[error("Invalid theory declaration: {0}")]
@@ -44,6 +58,8 @@ pub enum ParseRawError {
     DuplicateTheory(Operation),
     #[error("Duplicate arrow declaration {arrow} in theory {theory}")]
     DuplicateArrow { theory: Operation, arrow: Operation },
+    #[error("Invalid top-level definition: {0}")]
+    InvalidTopLevelDefinition(Hexpr),
     #[error("Parse error: {0}")]
     Parse(#[from] ParseError),
     #[error("IO error: {0}")]
@@ -65,23 +81,28 @@ pub enum MergeRawError {
 }
 
 impl RawTheorySet {
-    /// Parse text into a [`RawTheorySet`] consisting of zero or more top-level theory declarations.
+    /// Parse text into a [`RawTheorySet`] consisting of zero or more top-level theory declarations
+    /// and conservative extensions.
     pub fn from_text(text: &str) -> Result<Self, ParseRawError> {
         let hexprs = parse_hexprs(text)?;
         let mut theories = BTreeMap::new();
+        let mut extensions = Vec::new();
 
         for hexpr in hexprs {
-            let theory = RawTheory::try_from_hexpr(hexpr.clone())
-                .ok_or(ParseRawError::InvalidTheoryDeclaration(hexpr))?;
-            if theories
-                .insert(theory.name.clone(), theory.clone())
-                .is_some()
-            {
-                return Err(ParseRawError::DuplicateTheory(theory.name));
+            match RawTopLevel::try_from_hexpr(hexpr.clone())? {
+                RawTopLevel::Theory(theory) => {
+                    if theories
+                        .insert(theory.name.clone(), theory.clone())
+                        .is_some()
+                    {
+                        return Err(ParseRawError::DuplicateTheory(theory.name));
+                    }
+                }
+                RawTopLevel::Extension(extension) => extensions.push(extension),
             }
         }
 
-        Ok(Self { theories })
+        Ok(Self { theories, extensions })
     }
 
     pub fn from_file(path: PathBuf) -> Result<Self, ParseRawError> {
@@ -101,6 +122,7 @@ impl RawTheorySet {
                 }
             }
         }
+        self.extensions.extend(other.extensions);
 
         Ok(self)
     }
@@ -220,6 +242,60 @@ impl RawTheory {
     }
 }
 
+impl Extension {
+    fn try_from_top_level_def(hexpr: Hexpr) -> Option<Self> {
+        let Hexpr::Composition(parts) = hexpr else {
+            return None;
+        };
+
+        match &parts[..] {
+            [
+                kind,
+                Hexpr::Operation(theory),
+                Hexpr::Operation(name),
+                colon,
+                source,
+                arrow,
+                target,
+                eq,
+                def,
+            ] if is_operation(kind, "def")
+                && is_operation(colon, ":")
+                && is_operation(arrow, "->")
+                && is_operation(eq, "=") =>
+            {
+                let raw_arrow = RawTheoryArrow {
+                    name: name.clone(),
+                    type_maps: (source.clone(), target.clone()),
+                    definition: Some(def.clone()),
+                };
+                let mut arrows = BTreeMap::new();
+                arrows.insert(name.clone(), raw_arrow);
+                Some(Self {
+                    theory: theory.clone(),
+                    arrows,
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+impl RawTopLevel {
+    fn try_from_hexpr(hexpr: Hexpr) -> Result<Self, ParseRawError> {
+        if let Some(theory) = RawTheory::try_from_hexpr(hexpr.clone()) {
+            return Ok(Self::Theory(theory));
+        }
+        if let Some(extension) = Extension::try_from_top_level_def(hexpr.clone()) {
+            return Ok(Self::Extension(extension));
+        }
+        if matches!(&hexpr, Hexpr::Composition(parts) if matches!(parts.first(), Some(Hexpr::Operation(op)) if op.as_str() == "def")) {
+            return Err(ParseRawError::InvalidTopLevelDefinition(hexpr));
+        }
+        Err(ParseRawError::InvalidTheoryDeclaration(hexpr))
+    }
+}
+
 impl RawTheoryArrow {
     fn try_from_hexpr(hexpr: Hexpr) -> Option<Self> {
         let Hexpr::Composition(parts) = hexpr else {
@@ -288,6 +364,7 @@ mod tests {
         )?;
 
         assert_eq!(raw.theories.len(), 2);
+        assert!(raw.extensions.is_empty());
         assert!(raw.theories.contains_key(&"fol.syntax".parse()?));
         assert!(raw.theories.contains_key(&"fol.proof".parse()?));
         Ok(())
@@ -328,6 +405,25 @@ mod tests {
         let merged = lhs.merge(rhs)?;
         let theory = merged.theories.get(&"fol.syntax".parse()?).unwrap();
         assert_eq!(theory.arrows.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_top_level_definition_as_extension() -> Result<(), Box<dyn std::error::Error>> {
+        let raw = RawTheorySet::from_text(
+            r#"
+            (theory fol.syntax nat {
+              (arr wff : 1 -> 1)
+            })
+
+            (def fol.syntax boxed : 1 -> 1 = wff)
+            "#,
+        )?;
+
+        assert_eq!(raw.extensions.len(), 1);
+        let ext = &raw.extensions[0];
+        assert_eq!(ext.theory, "fol.syntax".parse()?);
+        assert!(ext.arrows.contains_key(&"boxed".parse()?));
         Ok(())
     }
 

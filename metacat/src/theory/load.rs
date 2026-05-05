@@ -26,6 +26,8 @@ pub enum LoadError {
     MergeRaw(#[from] MergeRawError),
     #[error("Unknown syntax category {base} for theory {theory}")]
     UnknownSyntaxCategory { theory: TheoryId, base: Operation },
+    #[error("Extension targets unknown theory {0}")]
+    UnknownExtensionTheory(Operation),
     #[error("Cycle detected in syntax-category dependencies involving {0}")]
     SyntaxCycle(TheoryId),
     #[error("Failed to interpret nat syntax map for theory {theory}, arrow {arrow}: {source}")]
@@ -95,6 +97,7 @@ where
 {
     let mut merged = RawTheorySet {
         theories: BTreeMap::new(),
+        extensions: Vec::new(),
     };
     for set in sets {
         merged = merged.merge(set?)?;
@@ -102,7 +105,9 @@ where
     Ok(merged)
 }
 
-fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
+fn resolve_raw_theory_set(mut raw: RawTheorySet) -> Result<TheorySet, LoadError> {
+    apply_extensions(&mut raw)?;
+
     let nat_id = builtin_nat_theory_id();
     // Reserve an id for the builtin `nat` theory alongside user-defined names so
     // later resolution can treat syntax references uniformly.
@@ -184,6 +189,27 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
     }
 
     Ok(TheorySet { theories })
+}
+
+// Apply conservative raw extensions before resolution, so added definitions
+// participate in the normal signature-building and interpretation pipeline.
+fn apply_extensions(raw: &mut RawTheorySet) -> Result<(), LoadError> {
+    for extension in raw.extensions.drain(..) {
+        let theory = raw
+            .theories
+            .get_mut(&extension.theory)
+            .ok_or_else(|| LoadError::UnknownExtensionTheory(extension.theory.clone()))?;
+        for (name, arrow) in extension.arrows {
+            if theory.arrows.insert(name.clone(), arrow).is_some() {
+                return Err(MergeRawError::DuplicateArrow {
+                    theory: theory.name.clone(),
+                    arrow: name,
+                }
+                .into());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn resolve_syntax_bases(
