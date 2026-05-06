@@ -126,6 +126,29 @@ impl RawTheorySet {
 
         Ok(self)
     }
+
+    /// Render this raw theory set as valid theory hexpr text.
+    ///
+    /// The output is intended to roundtrip through [`RawTheorySet::from_text`].
+    pub fn to_hexpr_text(&self) -> String {
+        let mut out = String::new();
+        let mut first = true;
+        for theory in self.theories.values() {
+            if !first {
+                out.push_str("\n\n");
+            }
+            first = false;
+            out.push_str(&theory_to_hexpr_text(theory));
+        }
+        for extension in &self.extensions {
+            if !first {
+                out.push_str("\n\n");
+            }
+            first = false;
+            out.push_str(&extension_to_hexpr_text(extension));
+        }
+        out
+    }
 }
 
 impl RawTheory {
@@ -339,6 +362,51 @@ impl RawTheoryArrow {
     }
 }
 
+fn theory_to_hexpr_text(theory: &RawTheory) -> String {
+    let mut out = format!("(theory {} {} {{\n", theory.name, theory.syntax_category);
+    for arrow in theory.arrows.values() {
+        out.push_str("  ");
+        out.push_str(&arrow_to_hexpr_text(arrow));
+        out.push('\n');
+    }
+    out.push_str("})");
+    out
+}
+
+fn extension_to_hexpr_text(extension: &Extension) -> String {
+    extension
+        .arrows
+        .values()
+        .map(|arrow| top_level_def_to_hexpr_text(&extension.theory, arrow))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn arrow_to_hexpr_text(arrow: &RawTheoryArrow) -> String {
+    let (source, target) = &arrow.type_maps;
+    match &arrow.definition {
+        None => format!("(arr {} : {} -> {})", arrow.name, source, target),
+        Some(definition) => {
+            format!(
+                "(def {} : {} -> {} = {})",
+                arrow.name, source, target, definition
+            )
+        }
+    }
+}
+
+fn top_level_def_to_hexpr_text(theory: &Operation, arrow: &RawTheoryArrow) -> String {
+    let (source, target) = &arrow.type_maps;
+    let definition = arrow
+        .definition
+        .as_ref()
+        .expect("top-level extension arrows must be bona-fide definitions");
+    format!(
+        "(def {} {} : {} -> {} = {})",
+        theory, arrow.name, source, target, definition
+    )
+}
+
 fn is_operation(hexpr: &Hexpr, literal: &str) -> bool {
     matches!(hexpr, Hexpr::Operation(op) if op.as_str() == literal)
 }
@@ -446,6 +514,31 @@ mod tests {
 
         let err = lhs.merge(rhs).unwrap_err();
         assert!(matches!(err, MergeRawError::DuplicateArrow { .. }));
+        Ok(())
+    }
+
+    #[test]
+    fn raw_theory_set_display_roundtrips() -> Result<(), Box<dyn std::error::Error>> {
+        let raw = RawTheorySet::from_text(
+            r#"
+            (theory fol.syntax nat {
+              (arr wff : 1 -> 1)
+              (arr -> : 2 -> 1)
+            })
+
+            (theory fol.proof fol.syntax {
+              (arr wi : {wff wff} -> (-> wff))
+              (def win : {wff wff} -> (-> -. wff) = (wi wn))
+            })
+
+            (def fol.syntax boxed : 1 -> 1 = wff)
+            "#,
+        )?;
+
+        let dumped = raw.to_hexpr_text();
+        let reparsed = RawTheorySet::from_text(&dumped)?;
+
+        assert_eq!(dumped, reparsed.to_hexpr_text());
         Ok(())
     }
 }
