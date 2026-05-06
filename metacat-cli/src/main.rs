@@ -42,8 +42,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Check {
-        #[arg()]
-        theory_name: String,
+        #[arg(long)]
+        theory: Option<String>,
         #[arg(required = true)]
         paths: Vec<PathBuf>,
     },
@@ -102,33 +102,51 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     match cli.command {
-        Command::Check { theory_name, paths } => check_files(theory_name, paths),
+        Command::Check { theory, paths } => check_files(theory, paths),
         Command::Arrow { format } => arrow(format),
     }
 }
 
 /// Read one or more files of `Declaration`s into object and arrow theories,
 /// then check all definitions.
-fn check_files(theory_name: String, paths: Vec<PathBuf>) -> anyhow::Result<()> {
+fn check_files(theory: Option<String>, paths: Vec<PathBuf>) -> anyhow::Result<()> {
     let theories = TheorySet::from_files(paths)?;
-    let theory_id = TheoryId(theory_name.parse()?);
-    let theory = theories
-        .theories
-        .get(&theory_id)
-        .ok_or_else(|| anyhow::anyhow!("theory '{}' not found", theory_id))?;
+    match theory {
+        Some(theory_name) => {
+            let theory_id = TheoryId(theory_name.parse()?);
+            let theory = theories
+                .theories
+                .get(&theory_id)
+                .ok_or_else(|| anyhow::anyhow!("theory '{}' not found", theory_id))?;
+            let Theory::Theory { .. } = theory else {
+                anyhow::bail!("theory '{}' is builtin and cannot be checked", theory_id);
+            };
+            check_one_theory(&theory_id, theory);
+        }
+        None => {
+            for (theory_id, theory) in &theories.theories {
+                if matches!(theory, Theory::Nat) {
+                    continue;
+                }
+                check_one_theory(theory_id, theory);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn check_one_theory(theory_id: &TheoryId, theory: &Theory) {
     let Theory::Theory { arrows, .. } = theory else {
-        anyhow::bail!("theory '{}' is builtin and cannot be checked", theory_id);
+        return;
     };
 
-    log::info!("checking definitions");
+    log::info!("checking definitions in {}", theory_id);
 
-    for (operation, declaration) in arrows
-        .iter()
-        .filter(|(_, arrow)| arrow.definition.is_some())
-    {
+    for (operation, declaration) in arrows.iter().filter(|(_, arrow)| arrow.definition.is_some()) {
         let mut term = declaration.definition.clone().unwrap();
         let (source, target) = declaration.type_maps.clone();
-        log::info!("checking definition {}", operation);
+        log::info!("checking definition {} in {}", operation, theory_id);
 
         let result = check(theory, source, target, &mut term);
         log::debug!("check: {:?}", result);
@@ -136,8 +154,9 @@ fn check_files(theory_name: String, paths: Vec<PathBuf>) -> anyhow::Result<()> {
         match result {
             Ok(_types) => {
                 println!(
-                    "{} {} : {} -> {}",
+                    "{} {} {} : {} -> {}",
                     "[✓]".green(),
+                    theory_id,
                     declaration.name,
                     declaration.raw.type_maps.0,
                     declaration.raw.type_maps.1
@@ -145,18 +164,17 @@ fn check_files(theory_name: String, paths: Vec<PathBuf>) -> anyhow::Result<()> {
             }
             Err(e) => {
                 println!(
-                    "{} {} : {} -> {}",
+                    "{} {} {} : {} -> {}",
                     "[✗]".red(),
+                    theory_id,
                     declaration.name,
                     declaration.raw.type_maps.0,
                     declaration.raw.type_maps.1
                 );
-                println!("Checking '{}' failed: {}", declaration.name, e);
+                println!("Checking '{} {}' failed: {}", theory_id, declaration.name, e);
             }
         }
     }
-
-    Ok(())
 }
 
 fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
