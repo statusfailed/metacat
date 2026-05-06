@@ -56,14 +56,22 @@ pub enum LoadError {
 }
 
 impl TheorySet {
+    /// Resolve a parsed raw theory set into a checked, interpreted [`TheorySet`].
+    ///
+    /// This is the entrypoint to use after running any source-to-source or raw
+    /// AST elaboration passes.
+    pub fn from_raw(raw: RawTheorySet) -> Result<Self, LoadError> {
+        resolve_raw_theory_set(raw)
+    }
+
     pub fn from_text(text: &str) -> Result<Self, LoadError> {
         let raw = RawTheorySet::from_text(text)?;
-        resolve_raw_theory_set(raw)
+        Self::from_raw(raw)
     }
 
     pub fn from_file(path: PathBuf) -> Result<Self, LoadError> {
         let raw = RawTheorySet::from_file(path)?;
-        resolve_raw_theory_set(raw)
+        Self::from_raw(raw)
     }
 
     /// Parse and merge multiple source strings before resolving theory references.
@@ -75,7 +83,7 @@ impl TheorySet {
         I: IntoIterator<Item = &'a str>,
     {
         let raw = merge_raw_sets(texts.into_iter().map(RawTheorySet::from_text))?;
-        resolve_raw_theory_set(raw)
+        Self::from_raw(raw)
     }
 
     /// Parse and merge multiple files before resolving theory references.
@@ -87,7 +95,7 @@ impl TheorySet {
         I: IntoIterator<Item = PathBuf>,
     {
         let raw = merge_raw_sets(paths.into_iter().map(RawTheorySet::from_file))?;
-        resolve_raw_theory_set(raw)
+        Self::from_raw(raw)
     }
 }
 

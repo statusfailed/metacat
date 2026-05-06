@@ -1,6 +1,6 @@
 [package]
 name = "metacat-cli"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "metacat: a categorical theorem prover"
 repository = "https://github.com/statusfailed/metacat"
@@ -11,7 +11,7 @@ documentation = "https://docs.rs/metacat"
 hexpr = { workspace = true }
 open-hypergraphs = { workspace = true }
 thiserror = { workspace = true }
-metacat = { version = "0.2.1", path = "../metacat" }
+metacat = { version = "0.2.2", path = "../metacat" }
 
 anyhow = "1.0.100"
 clap = { version = "4.5.54", features = ["derive"] }
