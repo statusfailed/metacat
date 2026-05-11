@@ -10,12 +10,13 @@
 //! downstream checking and tooling.
 
 use super::ast::{MergeRawError, ParseRawError, RawTheorySet};
+use super::graph::{GraphError, syntax_dependency_graph, topological_order};
 use super::model::{SignatureError, Term, Theory, TheoryArrow, TheoryId, TheorySet};
 use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
 use hexpr::{Hexpr, Operation, Signature, try_interpret};
 use open_hypergraphs::category::Arrow;
 use open_hypergraphs::lax::OpenHypergraph;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
@@ -24,12 +25,10 @@ pub enum LoadError {
     ParseRaw(#[from] ParseRawError),
     #[error(transparent)]
     MergeRaw(#[from] MergeRawError),
-    #[error("Unknown syntax category {base} for theory {theory}")]
-    UnknownSyntaxCategory { theory: TheoryId, base: Operation },
+    #[error(transparent)]
+    Graph(#[from] GraphError),
     #[error("Extension targets unknown theory {0}")]
     UnknownExtensionTheory(Operation),
-    #[error("Cycle detected in syntax-category dependencies involving {0}")]
-    SyntaxCycle(TheoryId),
     #[error("Failed to interpret nat syntax map for theory {theory}, arrow {arrow}: {source}")]
     NatInterpret {
         theory: TheoryId,
@@ -116,21 +115,7 @@ where
 fn resolve_raw_theory_set(mut raw: RawTheorySet) -> Result<TheorySet, LoadError> {
     apply_extensions(&mut raw)?;
 
-    let nat_id = builtin_nat_theory_id();
-    // Reserve an id for the builtin `nat` theory alongside user-defined names so
-    // later resolution can treat syntax references uniformly.
-    let mut theory_ids: HashMap<Operation, TheoryId> = raw
-        .theories
-        .keys()
-        .cloned()
-        .map(|name| {
-            let id = TheoryId::new(name.clone());
-            (name, id)
-        })
-        .collect();
-    theory_ids.insert(nat_id.0.clone(), nat_id.clone());
-
-    let syntax_bases = resolve_syntax_bases(&raw, &theory_ids)?;
+    let syntax_bases = syntax_dependency_graph(&raw)?;
     let order = topological_order(&syntax_bases)?;
     let mut theories = BTreeMap::new();
 
@@ -218,82 +203,6 @@ fn apply_extensions(raw: &mut RawTheorySet) -> Result<(), LoadError> {
         }
     }
     Ok(())
-}
-
-fn resolve_syntax_bases(
-    raw: &RawTheorySet,
-    theory_ids: &HashMap<Operation, TheoryId>,
-) -> Result<HashMap<TheoryId, TheoryId>, LoadError> {
-    let nat_id = builtin_nat_theory_id();
-    let mut bases = HashMap::new();
-    // `nat` is the unique root builtin. Giving it itself as a base keeps the
-    // dependency graph total while still letting the topo walk stop at the root.
-    // This is not merely ad hoc: categorically, the builtin `nat` theory is
-    // also the syntax category in which its own arrow profiles live.
-    bases.insert(nat_id.clone(), nat_id.clone());
-
-    for raw_theory in raw.theories.values() {
-        let theory = theory_ids
-            .get(&raw_theory.name)
-            .expect("theory id missing")
-            .clone();
-        // At this stage we only resolve names; interpretation of the actual
-        // type maps is deferred until the base theory has been loaded.
-        let syntax_base = theory_ids
-            .get(&raw_theory.syntax_category)
-            .cloned()
-            .ok_or_else(|| LoadError::UnknownSyntaxCategory {
-                theory: theory.clone(),
-                base: raw_theory.syntax_category.clone(),
-            })?;
-        bases.insert(theory, syntax_base);
-    }
-
-    Ok(bases)
-}
-
-fn topological_order(
-    syntax_bases: &HashMap<TheoryId, TheoryId>,
-) -> Result<Vec<TheoryId>, LoadError> {
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum Mark {
-        Visiting,
-        Done,
-    }
-
-    fn visit(
-        theory: &TheoryId,
-        syntax_bases: &HashMap<TheoryId, TheoryId>,
-        marks: &mut HashMap<TheoryId, Mark>,
-        order: &mut Vec<TheoryId>,
-    ) -> Result<(), LoadError> {
-        match marks.get(theory) {
-            Some(Mark::Done) => return Ok(()),
-            Some(Mark::Visiting) => return Err(LoadError::SyntaxCycle(theory.clone())),
-            None => {}
-        }
-
-        marks.insert(theory.clone(), Mark::Visiting);
-        if let Some(base) = syntax_bases.get(theory) {
-            // The builtin `nat` root is represented by the self-edge `nat -> nat`.
-            // We do not recurse across that edge.
-            if base != theory {
-                visit(base, syntax_bases, marks, order)?;
-            }
-        }
-        marks.insert(theory.clone(), Mark::Done);
-        // Post-order insertion ensures every syntax dependency appears before
-        // the theories that depend on it.
-        order.push(theory.clone());
-        Ok(())
-    }
-
-    let mut marks = HashMap::new();
-    let mut order = Vec::new();
-    for theory in syntax_bases.keys() {
-        visit(theory, syntax_bases, &mut marks, &mut order)?;
-    }
-    Ok(order)
 }
 
 fn interpret_type_maps(
@@ -415,14 +324,6 @@ where
 
 fn forget_labels<T, A>(f: OpenHypergraph<T, A>) -> OpenHypergraph<(), A> {
     f.map_nodes(|_| ())
-}
-
-fn builtin_nat_theory_id() -> TheoryId {
-    TheoryId(
-        NAT_THEORY_NAME
-            .parse()
-            .expect("builtin nat theory name should parse"),
-    )
 }
 
 fn is_builtin_nat(theory: &TheoryId) -> bool {
@@ -552,7 +453,7 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(matches!(err, LoadError::SyntaxCycle(_)));
+        assert!(matches!(err, LoadError::Graph(GraphError::SyntaxCycle(_))));
         Ok(())
     }
 
@@ -567,7 +468,10 @@ mod tests {
         )
         .unwrap_err();
 
-        assert!(matches!(err, LoadError::UnknownSyntaxCategory { .. }));
+        assert!(matches!(
+            err,
+            LoadError::Graph(GraphError::UnknownSyntaxCategory { .. })
+        ));
         Ok(())
     }
 }

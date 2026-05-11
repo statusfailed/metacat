@@ -63,16 +63,22 @@
 //!
 //! The implementation is split into:
 //! - [`ast`], which parses raw hexprs into a file-level AST;
+//! - [`graph`], which exposes syntax-category dependency graph utilities;
 //! - [`nat`], which defines the builtin `nat` syntax category;
 //! - [`model`], which defines the resolved in-memory representation;
 //! - [`load`], which resolves theory dependencies and interprets type maps and
 //!   definitions into open hypergraphs.
 
 pub mod ast;
+pub mod graph;
 pub mod load;
 pub mod model;
 pub mod nat;
 
 pub use ast::{MergeRawError, RawTheorySet};
+pub use graph::{
+    GraphError, SyntaxDependencyGraph, builtin_nat_theory_id, syntax_dependency_graph,
+    topological_order, transitive_dependency_subset,
+};
 pub use load::LoadError;
 pub use model::{Term, Theory, TheoryArrow, TheoryId, TheorySet};
