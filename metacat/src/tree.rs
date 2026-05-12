@@ -21,16 +21,15 @@ impl<Leaf, Node: std::fmt::Display> Tree<Leaf, Node> {
                     0 => Ok(format!("{op}")),
                     1 => Ok(format!("{op}({})", children[0].try_pretty(coarity)?)),
                     2 => {
-                        let op_str = format!("{op}");
-                        if op_str.starts_with(|c: char| c.is_alphanumeric()) {
+                        if self.is_infix() {
                             Ok(format!(
-                                "{op}({}, {})",
-                                children[0].try_pretty(coarity)?,
-                                children[1].try_pretty(coarity)?
+                                "{} {op} {}",
+                                children[0].try_pretty_operand(coarity)?,
+                                children[1].try_pretty_operand(coarity)?
                             ))
                         } else {
                             Ok(format!(
-                                "{} {op} {}",
+                                "{op}({}, {})",
                                 children[0].try_pretty(coarity)?,
                                 children[1].try_pretty(coarity)?
                             ))
@@ -55,5 +54,46 @@ impl<Leaf, Node: std::fmt::Display> Tree<Leaf, Node> {
                 }
             }
         }
+    }
+
+    fn is_infix(&self) -> bool {
+        match self {
+            Tree::Node(op, _, children) if children.len() == 2 => {
+                !format!("{op}").starts_with(|c: char| c.is_alphanumeric())
+            }
+            _ => false,
+        }
+    }
+
+    fn try_pretty_operand<E>(
+        &self,
+        coarity: Option<&dyn Fn(&Node) -> Result<usize, E>>,
+    ) -> Result<String, E> {
+        let rendered = self.try_pretty(coarity)?;
+        if self.is_infix() {
+            Ok(format!("({rendered})"))
+        } else {
+            Ok(rendered)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Tree;
+
+    #[test]
+    fn parenthesizes_nested_infix_operands() {
+        let tree = Tree::<(), &str>::Node(
+            "*",
+            0,
+            vec![
+                Tree::Node("+", 0, vec![Tree::Node("1", 0, vec![]), Tree::Node("1", 0, vec![])]),
+                Tree::Node("2", 0, vec![]),
+            ],
+        );
+
+        let coarity = |_op: &&str| -> Result<usize, ()> { Ok(1) };
+        assert_eq!(tree.try_pretty(Some(&coarity)).unwrap(), "(1 + 1) * 2");
     }
 }
