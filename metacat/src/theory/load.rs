@@ -81,7 +81,7 @@ impl TheorySet {
     where
         I: IntoIterator<Item = &'a str>,
     {
-        let raw = merge_raw_sets(texts.into_iter().map(RawTheorySet::from_text))?;
+        let raw = RawTheorySet::from_texts(texts)?;
         Self::from_raw(raw)
     }
 
@@ -93,23 +93,9 @@ impl TheorySet {
     where
         I: IntoIterator<Item = PathBuf>,
     {
-        let raw = merge_raw_sets(paths.into_iter().map(RawTheorySet::from_file))?;
+        let raw = RawTheorySet::from_files(paths)?;
         Self::from_raw(raw)
     }
-}
-
-fn merge_raw_sets<I>(sets: I) -> Result<RawTheorySet, LoadError>
-where
-    I: IntoIterator<Item = Result<RawTheorySet, ParseRawError>>,
-{
-    let mut merged = RawTheorySet {
-        theories: BTreeMap::new(),
-        extensions: Vec::new(),
-    };
-    for set in sets {
-        merged = merged.merge(set?)?;
-    }
-    Ok(merged)
 }
 
 fn resolve_raw_theory_set(mut raw: RawTheorySet) -> Result<TheorySet, LoadError> {

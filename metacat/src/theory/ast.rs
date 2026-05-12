@@ -60,6 +60,8 @@ pub enum ParseRawError {
     DuplicateArrow { theory: Operation, arrow: Operation },
     #[error("Invalid top-level definition: {0}")]
     InvalidTopLevelDefinition(Hexpr),
+    #[error(transparent)]
+    Merge(#[from] MergeRawError),
     #[error("Parse error: {0}")]
     Parse(#[from] ParseError),
     #[error("IO error: {0}")]
@@ -105,9 +107,25 @@ impl RawTheorySet {
         Ok(Self { theories, extensions })
     }
 
+    /// Parse and merge multiple source strings into one [`RawTheorySet`].
+    pub fn from_texts<'a, I>(texts: I) -> Result<Self, ParseRawError>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        merge_raw_sets(texts.into_iter().map(Self::from_text))
+    }
+
     pub fn from_file(path: PathBuf) -> Result<Self, ParseRawError> {
         let text = std::fs::read_to_string(path)?;
         Self::from_text(&text)
+    }
+
+    /// Parse and merge multiple files into one [`RawTheorySet`].
+    pub fn from_files<I>(paths: I) -> Result<Self, ParseRawError>
+    where
+        I: IntoIterator<Item = PathBuf>,
+    {
+        merge_raw_sets(paths.into_iter().map(Self::from_file))
     }
 
     pub fn merge(mut self, other: Self) -> Result<Self, MergeRawError> {
@@ -149,6 +167,20 @@ impl RawTheorySet {
         }
         out
     }
+}
+
+fn merge_raw_sets<I>(sets: I) -> Result<RawTheorySet, ParseRawError>
+where
+    I: IntoIterator<Item = Result<RawTheorySet, ParseRawError>>,
+{
+    let mut merged = RawTheorySet {
+        theories: BTreeMap::new(),
+        extensions: Vec::new(),
+    };
+    for set in sets {
+        merged = merged.merge(set?).map_err(ParseRawError::from)?;
+    }
+    Ok(merged)
 }
 
 impl RawTheory {
