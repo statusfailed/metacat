@@ -16,7 +16,7 @@ pub enum Error<O> {
     #[error("SSA decomposition failed")]
     SSAError(#[from] SSAError),
     #[error("Type maps had invalid arity/coarity")]
-    IncompatibleType,
+    InvalidTypeMaps,
     #[error("Error during type map evaluation {0:?}")]
     PartialResult(#[from] PartialResult<O>),
     #[error("Unable to quotient type map {0:?}")]
@@ -60,7 +60,7 @@ pub fn check(
     let mut type_term = fwd
         .lax_compose(&type_map)
         .and_then(|f| f.lax_compose(&rev))
-        .ok_or(Error::<Operation>::IncompatibleType)?;
+        .ok_or(Error::<Operation>::InvalidTypeMaps)?;
 
     //////////////////////////////////////////
     // Compute types, then select only those from nodes corresponding to nodes in the original term
