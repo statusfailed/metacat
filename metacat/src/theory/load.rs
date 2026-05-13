@@ -9,7 +9,7 @@
 //! The result is a resolved [`super::model::File`] whose theories are ready for
 //! downstream checking and tooling.
 
-use super::ast::{MergeRawError, ParseRawError, RawTheorySet};
+use super::ast::{ExtensionsError, ParseRawError, RawTheorySet};
 use super::graph::{GraphError, syntax_dependency_graph, topological_order};
 use super::model::{SignatureError, Term, Theory, TheoryArrow, TheoryId, TheorySet};
 use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
@@ -24,11 +24,9 @@ pub enum LoadError {
     #[error(transparent)]
     ParseRaw(#[from] ParseRawError),
     #[error(transparent)]
-    MergeRaw(#[from] MergeRawError),
+    Extensions(#[from] ExtensionsError),
     #[error(transparent)]
     Graph(#[from] GraphError),
-    #[error("Extension targets unknown theory {0}")]
-    UnknownExtensionTheory(Operation),
     #[error("Failed to interpret nat syntax map for theory {theory}, arrow {arrow}: {source}")]
     NatInterpret {
         theory: TheoryId,
@@ -98,8 +96,8 @@ impl TheorySet {
     }
 }
 
-fn resolve_raw_theory_set(mut raw: RawTheorySet) -> Result<TheorySet, LoadError> {
-    apply_extensions(&mut raw)?;
+fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
+    let raw = raw.with_extensions()?;
 
     let syntax_bases = syntax_dependency_graph(&raw)?;
     let order = topological_order(&syntax_bases)?;
@@ -168,27 +166,6 @@ fn resolve_raw_theory_set(mut raw: RawTheorySet) -> Result<TheorySet, LoadError>
     }
 
     Ok(TheorySet { theories })
-}
-
-// Apply conservative raw extensions before resolution, so added definitions
-// participate in the normal signature-building and interpretation pipeline.
-fn apply_extensions(raw: &mut RawTheorySet) -> Result<(), LoadError> {
-    for extension in raw.extensions.drain(..) {
-        let theory = raw
-            .theories
-            .get_mut(&extension.theory)
-            .ok_or_else(|| LoadError::UnknownExtensionTheory(extension.theory.clone()))?;
-        for (name, arrow) in extension.arrows {
-            if theory.arrows.insert(name.clone(), arrow).is_some() {
-                return Err(MergeRawError::DuplicateArrow {
-                    theory: theory.name.clone(),
-                    arrow: name,
-                }
-                .into());
-            }
-        }
-    }
-    Ok(())
 }
 
 fn interpret_type_maps(

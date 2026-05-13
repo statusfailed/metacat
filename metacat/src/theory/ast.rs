@@ -82,6 +82,14 @@ pub enum MergeRawError {
     DuplicateArrow { theory: Operation, arrow: Operation },
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ExtensionsError {
+    #[error("Extension targets unknown theory {0}")]
+    UnknownTheory(Operation),
+    #[error("Theory {theory} declares arrow {arrow} multiple times")]
+    DuplicateArrow { theory: Operation, arrow: Operation },
+}
+
 impl RawTheorySet {
     /// Parse text into a [`RawTheorySet`] consisting of zero or more top-level theory declarations
     /// and conservative extensions.
@@ -104,7 +112,10 @@ impl RawTheorySet {
             }
         }
 
-        Ok(Self { theories, extensions })
+        Ok(Self {
+            theories,
+            extensions,
+        })
     }
 
     /// Parse and merge multiple source strings into one [`RawTheorySet`].
@@ -142,6 +153,25 @@ impl RawTheorySet {
         }
         self.extensions.extend(other.extensions);
 
+        Ok(self)
+    }
+
+    /// Fold top-level extensions into their target theories.
+    pub fn with_extensions(mut self) -> Result<Self, ExtensionsError> {
+        for extension in self.extensions.drain(..) {
+            let theory = self
+                .theories
+                .get_mut(&extension.theory)
+                .ok_or_else(|| ExtensionsError::UnknownTheory(extension.theory.clone()))?;
+            for (name, arrow) in extension.arrows {
+                if theory.arrows.insert(name.clone(), arrow).is_some() {
+                    return Err(ExtensionsError::DuplicateArrow {
+                        theory: theory.name.clone(),
+                        arrow: name,
+                    });
+                }
+            }
+        }
         Ok(self)
     }
 
@@ -344,7 +374,8 @@ impl RawTopLevel {
         if let Some(extension) = Extension::try_from_top_level_def(hexpr.clone()) {
             return Ok(Self::Extension(extension));
         }
-        if matches!(&hexpr, Hexpr::Composition(parts) if matches!(parts.first(), Some(Hexpr::Operation(op)) if op.as_str() == "def")) {
+        if matches!(&hexpr, Hexpr::Composition(parts) if matches!(parts.first(), Some(Hexpr::Operation(op)) if op.as_str() == "def"))
+        {
             return Err(ParseRawError::InvalidTopLevelDefinition(hexpr));
         }
         Err(ParseRawError::InvalidTheoryDeclaration(hexpr))
