@@ -72,10 +72,10 @@ pub fn check(
     // NOTE: we rely on the type functor preserving the size of objects
     let offset = fwd.hypergraph.nodes.len();
     let size = arrow.hypergraph.nodes.len();
-    let indices = (offset..offset + size).map(|i| q.table[i]);
+    let indices: Vec<usize> = (offset..offset + size).map(|i| q.table[i]).collect();
 
-    let results = eval_type(type_term)?;
-    Ok(indices.map(|i| results[i].clone()).collect())
+    let results = eval_type(type_term).map_err(|err| project_check_error(err, &indices))?;
+    Ok(indices.iter().map(|&i| results[i].clone()).collect())
 }
 
 /// Evaluate a type map
@@ -223,5 +223,49 @@ impl Functor<(), Operation, (), Dual<Operation>> for AsType<'_> {
 
     fn map_arrow(&self, f: &OpenHypergraph<(), Operation>) -> OpenHypergraph<(), Dual<Operation>> {
         functor::try_define_map_arrow(self, f).unwrap()
+    }
+}
+
+fn project_check_error<O: Clone>(err: Error<O>, indices: &[usize]) -> Error<O> {
+    match err {
+        Error::PartialResult(partial) => Error::PartialResult(project_partial_result(partial, indices)),
+        other => other,
+    }
+}
+
+fn project_partial_result<O: Clone>(
+    partial: PartialResult<O>,
+    indices: &[usize],
+) -> PartialResult<O> {
+    PartialResult {
+        partial_result: indices
+            .iter()
+            .map(|&i| partial.partial_result[i].clone())
+            .collect(),
+        cause: partial.cause,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn projects_partial_results_to_input_term_nodes() {
+        let partial = PartialResult {
+            partial_result: vec![
+                Some(Tree::<(), &str>::Leaf(0, ())),
+                None,
+                Some(Tree::<(), &str>::Leaf(2, ())),
+                Some(Tree::<(), &str>::Leaf(3, ())),
+            ],
+            cause: EvalError::MergeError("lhs".into(), "rhs".into()),
+        };
+
+        let projected = project_partial_result(partial, &[3, 1]);
+        assert_eq!(
+            projected.partial_result,
+            vec![Some(Tree::<(), &str>::Leaf(3, ())), None]
+        );
     }
 }
