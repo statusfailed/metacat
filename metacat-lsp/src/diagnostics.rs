@@ -11,15 +11,16 @@ use crate::syntax::{is_operation_char, matching_close_offset, position_at_offset
 ///
 /// The next natural extension is source spans in `metacat` errors, then map
 /// those spans into precise diagnostic ranges here.
-pub fn diagnostics_for_document(text: &str) -> Vec<Diagnostic> {
-    validate_document(text)
+pub fn diagnostics_for_document(current_text: &str, project_texts: &[String]) -> Vec<Diagnostic> {
+    validate_document(project_texts)
         .err()
-        .map(|message| vec![document_diagnostic(text, message)])
+        .map(|message| vec![document_diagnostic(current_text, message)])
         .unwrap_or_default()
 }
 
-fn validate_document(text: &str) -> std::result::Result<(), String> {
-    let theories = TheorySet::from_text(text).map_err(|error| error.to_string())?;
+fn validate_document(texts: &[String]) -> std::result::Result<(), String> {
+    let theories =
+        TheorySet::from_texts(texts.iter().map(String::as_str)).map_err(|error| error.to_string())?;
 
     for (theory_id, theory) in &theories.theories {
         let Theory::Theory { arrows, .. } = theory else {

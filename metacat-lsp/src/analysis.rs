@@ -3,6 +3,18 @@ use metacat::theory::RawTheorySet;
 
 use crate::syntax::PortSide;
 
+pub fn raw_theory_set_from_texts<'a>(
+    texts: impl IntoIterator<Item = &'a str>,
+) -> Option<RawTheorySet> {
+    let mut texts = texts.into_iter();
+    let first = texts.next()?;
+    let mut merged = RawTheorySet::from_text(first).ok()?;
+    for text in texts {
+        merged = merged.merge(RawTheorySet::from_text(text).ok()?).ok()?;
+    }
+    Some(merged)
+}
+
 pub fn operation_profile(theories: &RawTheorySet, operation: &Operation) -> Option<String> {
     for theory in theories.theories.values() {
         let Some(arrow) = theory.arrows.get(operation) else {

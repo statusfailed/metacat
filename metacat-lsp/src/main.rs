@@ -3,6 +3,7 @@ mod capabilities;
 mod diagnostics;
 mod documents;
 mod hover;
+mod project;
 mod server;
 mod syntax;
 

@@ -2,6 +2,7 @@ use crate::capabilities::server_capabilities;
 use crate::diagnostics::diagnostics_for_document;
 use crate::documents::DocumentStore;
 use crate::hover::hover_at_position;
+use crate::project::context_for_document;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, Hover, HoverParams, InitializeParams,
@@ -24,8 +25,9 @@ impl Backend {
     }
 
     async fn publish_diagnostics(&self, uri: tower_lsp::lsp_types::Url, text: &str) {
+        let project = context_for_document(&uri, text);
         self.client
-            .publish_diagnostics(uri, diagnostics_for_document(text), None)
+            .publish_diagnostics(uri, diagnostics_for_document(text, &project.texts), None)
             .await;
     }
 }
@@ -71,7 +73,8 @@ impl LanguageServer for Backend {
         let Some(text) = self.documents.get(&uri).await else {
             return Ok(None);
         };
+        let project = context_for_document(&uri, &text);
 
-        Ok(hover_at_position(&text, position))
+        Ok(hover_at_position(&text, &project.texts, position))
     }
 }
