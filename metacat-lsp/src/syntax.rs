@@ -67,12 +67,9 @@ pub struct OpenDelimiter {
 
 impl FrobeniusElement {
     pub fn variable_occurrence(&self, offset: usize, text: &str) -> Option<FrobeniusOccurrence> {
-        let variable = self
-            .variables
-            .iter()
-            .find(|variable| {
-                variable.text == text && offset >= variable.start && offset < variable.end
-            })?;
+        let variable = self.variables.iter().find(|variable| {
+            variable.text == text && offset >= variable.start && offset < variable.end
+        })?;
         Some(FrobeniusOccurrence {
             side: variable.side,
             index: variable.index,

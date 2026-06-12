@@ -19,8 +19,8 @@ pub fn diagnostics_for_document(current_text: &str, project_texts: &[String]) ->
 }
 
 fn validate_document(texts: &[String]) -> std::result::Result<(), String> {
-    let theories =
-        TheorySet::from_texts(texts.iter().map(String::as_str)).map_err(|error| error.to_string())?;
+    let theories = TheorySet::from_texts(texts.iter().map(String::as_str))
+        .map_err(|error| error.to_string())?;
 
     for (theory_id, theory) in &theories.theories {
         let Theory::Theory { arrows, .. } = theory else {

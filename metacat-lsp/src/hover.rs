@@ -1,9 +1,7 @@
-use hexpr::Operation;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Range};
 
 use crate::analysis::{
-    checked_definition_wire_label, operation_profile, raw_theory_set_from_texts,
-    theory_set_from_texts,
+    checked_definition_operation_label, checked_definition_wire_label, theory_set_from_texts,
 };
 use crate::syntax::{
     CompositionElement, FrobeniusSide, PortSide, composition_around, delimiter_stack_at,
@@ -11,10 +9,13 @@ use crate::syntax::{
     scan_composition_elements, token_at,
 };
 
-/// Hover is intentionally narrow right now: it only reports wire/type
-/// information. Keep presentation here; put semantic lookup in `analysis.rs`
-/// and syntax/position mechanics in `syntax.rs`.
-pub fn hover_at_position(text: &str, project_texts: &[String], position: Position) -> Option<Hover> {
+/// Keep presentation here; put semantic lookup in `analysis.rs` and
+/// syntax/position mechanics in `syntax.rs`.
+pub fn hover_at_position(
+    text: &str,
+    project_texts: &[String],
+    position: Position,
+) -> Option<Hover> {
     hover_info_at_position(text, project_texts, position).map(|info| Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
@@ -53,9 +54,9 @@ fn hover_info_at_position(
     };
 
     let type_info = if inside_frobenius {
-        wire_type_at(text, project_texts, &token)?
+        wire_label_at(text, project_texts, &token)?
     } else {
-        operation_type_at(project_texts, &token)?
+        operation_label_at(text, project_texts, &token)?
     };
 
     Some(HoverInfo {
@@ -68,16 +69,35 @@ fn hover_info_at_position(
     })
 }
 
-fn operation_type_at(project_texts: &[String], token: &crate::syntax::Token) -> Option<String> {
-    if matches!(token.text.as_str(), "theory" | "arr" | "def") {
+fn operation_label_at(
+    text: &str,
+    project_texts: &[String],
+    token: &crate::syntax::Token,
+) -> Option<String> {
+    let definition = enclosing_declaration(text, token.start, "def")?;
+    let body_start = definition_body_start(text, definition)?;
+    if token.start < body_start {
         return None;
     }
-    let raw_theories = raw_theory_set_from_texts(project_texts.iter().map(String::as_str))?;
-    let operation: Operation = token.text.parse().ok()?;
-    operation_profile(&raw_theories, &operation)
+
+    let resolved_theories = theory_set_from_texts(project_texts.iter().map(String::as_str))?;
+    let definition_context = definition_context(text, token.start)?;
+    let operation_occurrence = operation_occurrence_before(text, token.start, &token.text)?;
+
+    checked_definition_operation_label(
+        &resolved_theories,
+        &definition_context.theory,
+        &definition_context.definition,
+        &token.text,
+        operation_occurrence,
+    )
 }
 
-fn wire_type_at(text: &str, project_texts: &[String], token: &crate::syntax::Token) -> Option<String> {
+fn wire_label_at(
+    text: &str,
+    project_texts: &[String],
+    token: &crate::syntax::Token,
+) -> Option<String> {
     let expression = composition_around(text, token.start)?;
     let elements = scan_composition_elements(text, expression.start, expression.end)?;
     let hovered = elements.iter().position(|element| {
@@ -213,7 +233,11 @@ fn declaration_first_name(text: &str, span: Span) -> Option<String> {
     Some(token_at(text, offset, is_operation_char)?.text)
 }
 
-fn operation_occurrence_before(text: &str, operation_start: usize, operation: &str) -> Option<usize> {
+fn operation_occurrence_before(
+    text: &str,
+    operation_start: usize,
+    operation: &str,
+) -> Option<usize> {
     let definition = enclosing_declaration(text, operation_start, "def")?;
     let mut offset = definition_body_start(text, definition)?;
     let mut count = 0usize;
@@ -289,26 +313,6 @@ mod tests {
     }
 
     #[test]
-    fn hover_reports_operation_profile() {
-        let text = r#"(theory fol.syntax nat {
-  (arr wff : 1 -> 1)
-  (arr -> : 2 -> 1)
-})
-
-(theory fol.proof fol.syntax {
-  (arr wi : {wff wff} -> (-> wff))
-})"#;
-        let offset = text.find("wi").unwrap();
-        let project_texts = vec![text.to_string()];
-        let info =
-            hover_info_at_position(text, &project_texts, position_at_offset(text, offset)).unwrap();
-
-        assert_eq!(info.text, "wi");
-        assert_eq!(info.type_info, "{wff wff} -> (-> wff)");
-        assert_eq!(info.to_markdown(), "`wi : {wff wff} -> (-> wff)`");
-    }
-
-    #[test]
     fn hover_uses_checked_graph_label_not_raw_hexpr_fallback() {
         let text = include_str!("../../fol.hex");
         let p2 = text.find("(def p2").unwrap();
@@ -345,5 +349,21 @@ mod tests {
 
         assert_eq!(info.text, "ph");
         assert_eq!(info.type_info, "wff(x0)");
+    }
+
+    #[test]
+    fn hover_reports_operation_wire_labels() {
+        let text = include_str!("../../fol.hex");
+        let p2 = text.find("(def p2").unwrap();
+        let offset = text[p2..].find("ax-1").unwrap() + p2;
+        let project_texts = vec![text.to_string()];
+        let info =
+            hover_info_at_position(text, &project_texts, position_at_offset(text, offset)).unwrap();
+
+        assert_eq!(info.text, "ax-1");
+        assert!(info.type_info.contains("wff(x0)"));
+        assert!(info.type_info.contains("|-"));
+        assert!(info.type_info.contains("->"));
+        assert!(!info.type_info.contains("[."));
     }
 }
