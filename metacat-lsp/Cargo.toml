@@ -1,0 +1,16 @@
+[package]
+name = "metacat-lsp"
+version = "0.1.0"
+edition = "2024"
+description = "Language server for Metacat"
+repository = "https://github.com/statusfailed/metacat"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "metacat-lsp"
+path = "src/main.rs"
+
+[dependencies]
+metacat = { path = "../metacat" }
+tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread"] }
+tower-lsp = { workspace = true }

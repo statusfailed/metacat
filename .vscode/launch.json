@@ -11,7 +11,7 @@
       "outFiles": [
         "${workspaceFolder}/metacat-vscode/out/**/*.js"
       ],
-      "preLaunchTask": "npm: compile metacat-vscode"
+      "preLaunchTask": "build metacat vscode dev"
     }
   ]
 }

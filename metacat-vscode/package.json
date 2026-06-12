@@ -35,6 +35,11 @@
           "type": "string",
           "default": "fol.proof",
           "description": "Theory name passed to metacat check for the current file."
+        },
+        "metacat.languageServerExecutable": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the metacat-lsp executable. Defaults to ../target/debug/metacat-lsp during local extension development, then metacat-lsp on PATH."
         }
       }
     },
@@ -72,6 +77,9 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",
