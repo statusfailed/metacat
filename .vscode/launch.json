@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Metacat VS Code Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/metacat-vscode"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/metacat-vscode/out/**/*.js"
+      ],
+      "preLaunchTask": "build metacat vscode dev"
+    }
+  ]
+}

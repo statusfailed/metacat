@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build metacat vscode dev",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "cargo: build metacat-lsp",
+        "npm: compile"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "cargo: build metacat-lsp",
+      "type": "shell",
+      "command": "cargo build -p metacat-lsp",
+      "options": {
+        "cwd": "${workspaceFolder}/.."
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "type": "npm",
+      "script": "compile",
+      "group": "build",
+      "problemMatcher": "$tsc"
+    },
+    {
+      "type": "npm",
+      "script": "watch",
+      "group": "build",
+      "problemMatcher": "$tsc-watch",
+      "isBackground": true
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "name": "Metacat",
+  "scopeName": "source.metacat",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#metacat-declaration"
+    },
+    {
+      "include": "#hexpr-frobenius"
+    },
+    {
+      "include": "#hexpr-delimiter"
+    },
+    {
+      "include": "#hexpr-operation"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.metacat",
+          "match": "#[^\\n]*"
+        }
+      ]
+    },
+    "hexpr-delimiter": {
+      "patterns": [
+        {
+          "name": "punctuation.section.composition.begin.metacat",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.composition.end.metacat",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.tensor.begin.metacat",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.section.tensor.end.metacat",
+          "match": "\\}"
+        }
+      ]
+    },
+    "hexpr-frobenius": {
+      "patterns": [
+        {
+          "name": "meta.frobenius.metacat",
+          "begin": "\\[",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.frobenius.begin.metacat"
+            }
+          },
+          "end": "\\]",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.frobenius.end.metacat"
+            }
+          },
+          "patterns": [
+            {
+              "name": "punctuation.separator.frobenius.metacat",
+              "match": "\\."
+            },
+            {
+              "name": "variable.parameter.frobenius.metacat",
+              "match": "[A-Za-z0-9_-]+"
+            }
+          ]
+        }
+      ]
+    },
+    "hexpr-operation": {
+      "patterns": [
+        {
+          "name": "keyword.operator.metacat",
+          "match": "(?<![A-Za-z0-9_.*+\\-/|>:=!?-])(?:->|\\|-|-\\.|:|=)(?![A-Za-z0-9_.*+\\-/|>:=!?-])"
+        },
+        {
+          "name": "constant.numeric.integer.metacat",
+          "match": "(?<![A-Za-z0-9_.*+\\-/|>:=!?-])[0-9]+(?![A-Za-z0-9_.*+\\-/|>:=!?-])"
+        },
+        {
+          "name": "storage.type.metacat",
+          "match": "(?<![A-Za-z0-9_.*+\\-/|>:=!?-])(?:nat|wff|setvar)(?![A-Za-z0-9_.*+\\-/|>:=!?-])"
+        },
+        {
+          "name": "support.function.axiom.metacat",
+          "match": "(?<![A-Za-z0-9_.*+\\-/|>:=!?-])ax-[A-Za-z0-9_.*+\\-/|>:=!?-]+"
+        },
+        {
+          "name": "entity.name.function.metacat",
+          "match": "(?<![A-Za-z0-9_.*+\\-/|>:=!?-])[A-Za-z_][A-Za-z0-9_.*+\\-/|>:=!?-]*"
+        },
+        {
+          "name": "constant.other.operation.metacat",
+          "match": "(?<![A-Za-z0-9_.*+\\-/|>:=!?-])[A-Za-z0-9_.*+\\-/|>:=!?-]+"
+        }
+      ]
+    },
+    "metacat-declaration": {
+      "patterns": [
+        {
+          "name": "meta.declaration.theory.metacat",
+          "match": "(\\()\\s*(theory)\\s+([A-Za-z0-9_.*+\\-/|>:=!?-]+)\\s+([A-Za-z0-9_.*+\\-/|>:=!?-]+)",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.composition.begin.metacat"
+            },
+            "2": {
+              "name": "keyword.declaration.theory.metacat"
+            },
+            "3": {
+              "name": "entity.name.namespace.theory.metacat"
+            },
+            "4": {
+              "name": "entity.other.inherited-class.syntax-category.metacat"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.arrow.metacat",
+          "match": "(\\()\\s*(arr)\\s+([A-Za-z0-9_.*+\\-/|>:=!?-]+)",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.composition.begin.metacat"
+            },
+            "2": {
+              "name": "keyword.declaration.arrow.metacat"
+            },
+            "3": {
+              "name": "entity.name.function.arrow.metacat"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.definition.metacat",
+          "match": "(\\()\\s*(def)\\s+(?:([A-Za-z0-9_.*+\\-/|>:=!?-]+)\\s+)?([A-Za-z0-9_.*+\\-/|>:=!?-]+)(?=\\s*:)",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.composition.begin.metacat"
+            },
+            "2": {
+              "name": "keyword.declaration.definition.metacat"
+            },
+            "3": {
+              "name": "entity.name.namespace.theory.metacat"
+            },
+            "4": {
+              "name": "entity.name.function.definition.metacat"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
