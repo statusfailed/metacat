@@ -1,0 +1,81 @@
+{
+  "name": "metacat-vscode",
+  "displayName": "Metacat",
+  "description": "VS Code support for Metacat theorem files.",
+  "version": "0.0.1",
+  "publisher": "metacat",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:metacat",
+    "onCommand:metacat.checkCurrentFile"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "metacat.checkCurrentFile",
+        "title": "Metacat: Check Current File"
+      }
+    ],
+    "configuration": {
+      "title": "Metacat",
+      "properties": {
+        "metacat.executable": {
+          "type": "string",
+          "default": "metacat",
+          "description": "Path to the metacat CLI executable."
+        },
+        "metacat.defaultTheory": {
+          "type": "string",
+          "default": "fol.proof",
+          "description": "Theory name passed to metacat check for the current file."
+        }
+      }
+    },
+    "languages": [
+      {
+        "id": "metacat",
+        "aliases": [
+          "Metacat",
+          "metacat"
+        ],
+        "extensions": [
+          ".hex"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "metacat",
+        "scopeName": "source.metacat",
+        "path": "./syntaxes/metacat.tmLanguage.json"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "metacat.checkCurrentFile",
+          "when": "resourceLangId == metacat",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.8",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.2"
+  }
+}

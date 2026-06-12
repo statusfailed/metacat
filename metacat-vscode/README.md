@@ -1,0 +1,36 @@
+# Metacat VS Code Extension
+
+Local development extension for Metacat files.
+
+## Development
+
+Install dependencies:
+
+```sh
+npm install
+```
+
+Compile:
+
+```sh
+npm run compile
+```
+
+Run locally:
+
+1. Open this `metacat-vscode` folder in VS Code.
+2. Press `F5`.
+3. In the Extension Development Host, open a Metacat repo or a `.hex` file.
+
+## Configuration
+
+- `metacat.executable`: path to the `metacat` CLI. Defaults to `metacat`.
+- `metacat.defaultTheory`: theory name used by `Metacat: Check Current File`. Defaults to `fol.proof`.
+
+For this repository during development, set `metacat.executable` to the built CLI path, for example:
+
+```json
+{
+  "metacat.executable": "../target/debug/metacat"
+}
+```
