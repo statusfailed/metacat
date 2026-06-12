@@ -285,7 +285,7 @@ pub fn delimiter_stack_at(text: &str, offset: usize) -> Vec<OpenDelimiter> {
     stack
 }
 
-fn matching_close_offset(text: &str, open_offset: usize) -> Option<usize> {
+pub fn matching_close_offset(text: &str, open_offset: usize) -> Option<usize> {
     let open = char_at(text, open_offset)?;
     let close = close_for(open)?;
     let mut depth = 0usize;
