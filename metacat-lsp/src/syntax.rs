@@ -49,6 +49,7 @@ pub struct FrobeniusOccurrence {
 #[derive(Debug)]
 pub struct OperationElement {
     pub text: String,
+    pub start: usize,
 }
 
 #[derive(Debug)]
@@ -118,6 +119,7 @@ pub fn scan_composition_elements(
                 let token = token_at(text, offset, is_operation_char)?;
                 elements.push(CompositionElement::Operation(OperationElement {
                     text: token.text,
+                    start: token.start,
                 }));
                 offset = token.end;
             }
