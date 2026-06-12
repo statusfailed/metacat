@@ -15,6 +15,7 @@ pub fn raw_theory_set_from_texts<'a>(
     Some(merged)
 }
 
+
 pub fn operation_profile(theories: &RawTheorySet, operation: &Operation) -> Option<String> {
     for theory in theories.theories.values() {
         let Some(arrow) = theory.arrows.get(operation) else {
@@ -47,7 +48,11 @@ pub fn operation_port_type(
 
 fn type_port(type_map: &Hexpr, index: usize) -> Option<String> {
     match type_map {
-        Hexpr::Tensor(parts) => parts.get(index).map(ToString::to_string),
+        Hexpr::Tensor(parts) => parts
+            .iter()
+            .filter(|part| !matches!(part, Hexpr::Frobenius { .. }))
+            .nth(index)
+            .map(ToString::to_string),
         value if index == 0 => Some(value.to_string()),
         _ => None,
     }

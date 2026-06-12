@@ -1,7 +1,9 @@
 use hexpr::Operation;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Range};
 
-use crate::analysis::{operation_port_type, operation_profile, raw_theory_set_from_texts};
+use crate::analysis::{
+    operation_port_type, operation_profile, raw_theory_set_from_texts,
+};
 use crate::syntax::{
     CompositionElement, FrobeniusSide, PortSide, composition_around, delimiter_stack_at,
     is_operation_char, is_variable_char, position_at_offset, scan_composition_elements, token_at,
@@ -163,5 +165,42 @@ mod tests {
         assert_eq!(info.text, "wi");
         assert_eq!(info.type_info, "{wff wff} -> (-> wff)");
         assert_eq!(info.to_markdown(), "`wi : {wff wff} -> (-> wff)`");
+    }
+
+    #[test]
+    fn hover_skips_frobenius_context_when_reporting_wire_type() {
+        let text = r#"(theory type nat {
+  (arr ix : 1 -> 1)
+  (arr val : 1 -> 1)
+  (arr u64 : 1 -> 1)
+  (arr : : 2 -> 1)
+  (arr > : 2 -> 1)
+  (arr |- : 1 -> 1)
+})
+
+(theory program type {
+  (arr ix.index : {[n position.]
+    ([.n] ix val)
+  } -> {[n position.]
+    ({[.position] u64} :)
+    ([.n position] > |-) 
+  })
+
+  (def use-index : ([n.] ix val) -> {[n position.]
+    ({[.position] u64} :)
+    ([.n position] > |-) 
+  } =
+    ([index.]
+      ([.index] ix.index [u64_position position_lt_n.])
+    )
+  )
+})"#;
+        let offset = text.find("[.index] ix.index").unwrap() + 2;
+        let project_texts = vec![text.to_string()];
+        let info =
+            hover_info_at_position(text, &project_texts, position_at_offset(text, offset)).unwrap();
+
+        assert_eq!(info.text, "index");
+        assert_eq!(info.type_info, "([ . n] ix val)");
     }
 }
