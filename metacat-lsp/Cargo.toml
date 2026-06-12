@@ -11,6 +11,7 @@ name = "metacat-lsp"
 path = "src/main.rs"
 
 [dependencies]
+hexpr = { workspace = true }
 metacat = { path = "../metacat" }
 tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread"] }
 tower-lsp = { workspace = true }

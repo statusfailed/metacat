@@ -749,6 +749,7 @@ dependencies = [
 name = "metacat-lsp"
 version = "0.1.0"
 dependencies = [
+ "hexpr",
  "metacat",
  "tokio",
  "tower-lsp",

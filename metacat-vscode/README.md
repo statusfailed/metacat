@@ -38,6 +38,26 @@ automatically when it exists.
 - `metacat.defaultTheory`: theory name used by `Metacat: Check Current File`. Defaults to `fol.proof`.
 - `metacat.languageServerExecutable`: path to the `metacat-lsp` executable. Defaults to the local development binary when available.
 
+## Language Server
+
+The Rust language server lives in `../metacat-lsp`.
+
+Current LSP capabilities:
+
+- full-document sync
+- diagnostics
+- hover
+
+Module guide:
+
+- `capabilities.rs`: advertised LSP capabilities. Add protocol features here first.
+- `server.rs`: LSP request/notification wiring.
+- `documents.rs`: in-memory document store.
+- `diagnostics.rs`: parse/load/check diagnostics.
+- `hover.rs`: hover presentation and feature flow.
+- `analysis.rs`: Metacat type/profile lookup helpers.
+- `syntax.rs`: source position, token, and Hexpr surface scanning helpers.
+
 For this repository during development, set `metacat.executable` to the built CLI path, for example:
 
 ```json
