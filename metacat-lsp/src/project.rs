@@ -84,12 +84,15 @@ fn manifest_entries(path: &Path) -> Result<Vec<ManifestEntry>, String> {
 
     let mut entries = Vec::new();
     if let Some(files) = json.get("files").and_then(Value::as_array) {
-        entries.extend(files.iter().filter_map(Value::as_str).map(|pattern| {
-            ManifestEntry {
-                root: manifest_root.to_path_buf(),
-                pattern: pattern.to_string(),
-            }
-        }));
+        entries.extend(
+            files
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|pattern| ManifestEntry {
+                    root: manifest_root.to_path_buf(),
+                    pattern: pattern.to_string(),
+                }),
+        );
     }
 
     if let Some(includes) = json.get("include").and_then(Value::as_array) {
@@ -101,12 +104,15 @@ fn manifest_entries(path: &Path) -> Result<Vec<ManifestEntry>, String> {
                 continue;
             };
             let root = resolve_manifest_path(manifest_root, folder);
-            entries.extend(files.iter().filter_map(Value::as_str).map(|pattern| {
-                ManifestEntry {
-                    root: root.clone(),
-                    pattern: pattern.to_string(),
-                }
-            }));
+            entries.extend(
+                files
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|pattern| ManifestEntry {
+                        root: root.clone(),
+                        pattern: pattern.to_string(),
+                    }),
+            );
         }
     }
 
@@ -241,7 +247,12 @@ mod tests {
         let context = context_for_document(&uri, "new unsaved text");
 
         assert_eq!(context.texts.len(), 2);
-        assert!(context.texts.iter().any(|text| text == "(theory base nat {})"));
+        assert!(
+            context
+                .texts
+                .iter()
+                .any(|text| text == "(theory base nat {})")
+        );
         assert!(context.texts.iter().any(|text| text == "new unsaved text"));
 
         fs::remove_dir_all(root).unwrap();
@@ -281,7 +292,12 @@ mod tests {
         let context = context_for_document(&uri, "new current");
 
         assert_eq!(context.texts.len(), 2);
-        assert!(context.texts.iter().any(|text| text == "(theory shared nat {})"));
+        assert!(
+            context
+                .texts
+                .iter()
+                .any(|text| text == "(theory shared nat {})")
+        );
         assert!(context.texts.iter().any(|text| text == "new current"));
 
         fs::remove_dir_all(root).unwrap();

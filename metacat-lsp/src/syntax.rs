@@ -49,6 +49,7 @@ pub struct FrobeniusOccurrence {
 #[derive(Debug)]
 pub struct OperationElement {
     pub text: String,
+    pub start: usize,
 }
 
 #[derive(Debug)]
@@ -66,12 +67,9 @@ pub struct OpenDelimiter {
 
 impl FrobeniusElement {
     pub fn variable_occurrence(&self, offset: usize, text: &str) -> Option<FrobeniusOccurrence> {
-        let variable = self
-            .variables
-            .iter()
-            .find(|variable| {
-                variable.text == text && offset >= variable.start && offset < variable.end
-            })?;
+        let variable = self.variables.iter().find(|variable| {
+            variable.text == text && offset >= variable.start && offset < variable.end
+        })?;
         Some(FrobeniusOccurrence {
             side: variable.side,
             index: variable.index,
@@ -118,6 +116,7 @@ pub fn scan_composition_elements(
                 let token = token_at(text, offset, is_operation_char)?;
                 elements.push(CompositionElement::Operation(OperationElement {
                     text: token.text,
+                    start: token.start,
                 }));
                 offset = token.end;
             }
