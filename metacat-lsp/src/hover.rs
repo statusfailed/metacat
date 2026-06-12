@@ -1,8 +1,7 @@
 use hexpr::Operation;
-use metacat::theory::RawTheorySet;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Range};
 
-use crate::analysis::{operation_port_type, operation_profile};
+use crate::analysis::{operation_port_type, operation_profile, raw_theory_set_from_texts};
 use crate::syntax::{
     CompositionElement, FrobeniusSide, PortSide, composition_around, delimiter_stack_at,
     is_operation_char, is_variable_char, position_at_offset, scan_composition_elements, token_at,
@@ -11,8 +10,8 @@ use crate::syntax::{
 /// Hover is intentionally narrow right now: it only reports wire/type
 /// information. Keep presentation here; put semantic lookup in `analysis.rs`
 /// and syntax/position mechanics in `syntax.rs`.
-pub fn hover_at_position(text: &str, position: Position) -> Option<Hover> {
-    hover_info_at_position(text, position).map(|info| Hover {
+pub fn hover_at_position(text: &str, project_texts: &[String], position: Position) -> Option<Hover> {
+    hover_info_at_position(text, project_texts, position).map(|info| Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
             value: info.to_markdown(),
@@ -34,7 +33,11 @@ impl HoverInfo {
     }
 }
 
-fn hover_info_at_position(text: &str, position: Position) -> Option<HoverInfo> {
+fn hover_info_at_position(
+    text: &str,
+    project_texts: &[String],
+    position: Position,
+) -> Option<HoverInfo> {
     let offset = crate::syntax::offset_at_position(text, position)?;
     let inside_frobenius = delimiter_stack_at(text, offset)
         .iter()
@@ -46,9 +49,9 @@ fn hover_info_at_position(text: &str, position: Position) -> Option<HoverInfo> {
     };
 
     let type_info = if inside_frobenius {
-        wire_type_at(text, &token)?
+        wire_type_at(text, project_texts, &token)?
     } else {
-        operation_type_at(text, &token)?
+        operation_type_at(project_texts, &token)?
     };
 
     Some(HoverInfo {
@@ -61,16 +64,16 @@ fn hover_info_at_position(text: &str, position: Position) -> Option<HoverInfo> {
     })
 }
 
-fn operation_type_at(text: &str, token: &crate::syntax::Token) -> Option<String> {
+fn operation_type_at(project_texts: &[String], token: &crate::syntax::Token) -> Option<String> {
     if matches!(token.text.as_str(), "theory" | "arr" | "def") {
         return None;
     }
-    let theories = RawTheorySet::from_text(text).ok()?;
+    let theories = raw_theory_set_from_texts(project_texts.iter().map(String::as_str))?;
     let operation: Operation = token.text.parse().ok()?;
     operation_profile(&theories, &operation)
 }
 
-fn wire_type_at(text: &str, token: &crate::syntax::Token) -> Option<String> {
+fn wire_type_at(text: &str, project_texts: &[String], token: &crate::syntax::Token) -> Option<String> {
     let expression = composition_around(text, token.start)?;
     let elements = scan_composition_elements(text, expression.start, expression.end)?;
     let hovered = elements.iter().position(|element| {
@@ -84,7 +87,7 @@ fn wire_type_at(text: &str, token: &crate::syntax::Token) -> Option<String> {
         return None;
     };
     let occurrence = frobenius.variable_occurrence(token.start, &token.text)?;
-    let theories = RawTheorySet::from_text(text).ok()?;
+    let theories = raw_theory_set_from_texts(project_texts.iter().map(String::as_str))?;
 
     match occurrence.side {
         FrobeniusSide::Target => {
@@ -133,7 +136,9 @@ mod tests {
   )
 })"#;
         let offset = text.find("[.ph ph]").unwrap() + 2;
-        let info = hover_info_at_position(text, position_at_offset(text, offset)).unwrap();
+        let project_texts = vec![text.to_string()];
+        let info =
+            hover_info_at_position(text, &project_texts, position_at_offset(text, offset)).unwrap();
 
         assert_eq!(info.text, "ph");
         assert_eq!(info.type_info, "wff");
@@ -151,7 +156,9 @@ mod tests {
   (arr wi : {wff wff} -> (-> wff))
 })"#;
         let offset = text.find("wi").unwrap();
-        let info = hover_info_at_position(text, position_at_offset(text, offset)).unwrap();
+        let project_texts = vec![text.to_string()];
+        let info =
+            hover_info_at_position(text, &project_texts, position_at_offset(text, offset)).unwrap();
 
         assert_eq!(info.text, "wi");
         assert_eq!(info.type_info, "{wff wff} -> (-> wff)");

@@ -48,11 +48,53 @@ Current LSP capabilities:
 - diagnostics
 - hover
 
+Project loading:
+
+- For any file-backed document, the LSP walks upward from the file directory and
+  uses the nearest `metacat.json`.
+- Manifest paths are relative to the directory containing `metacat.json`.
+- The current open buffer is always included, and unsaved edits override the
+  file contents on disk.
+- If no `metacat.json` is found, the LSP uses standalone mode and loads only the
+  current file.
+
+Minimal `metacat.json`:
+
+```json
+{
+  "files": [
+    "stdlib/**/*.hex",
+    "examples/current.hex"
+  ]
+}
+```
+
+To load files from another folder, use `include`. The `folder` path is relative
+to the `metacat.json` directory, and each entry in `files` is relative to that
+folder:
+
+```json
+{
+  "files": [
+    "examples/current.hex"
+  ],
+  "include": [
+    {
+      "folder": "../stdlib",
+      "files": [
+        "**/*.hex"
+      ]
+    }
+  ]
+}
+```
+
 Module guide:
 
 - `capabilities.rs`: advertised LSP capabilities. Add protocol features here first.
 - `server.rs`: LSP request/notification wiring.
 - `documents.rs`: in-memory document store.
+- `project.rs`: nearest `metacat.json` discovery and project load sets.
 - `diagnostics.rs`: parse/load/check diagnostics.
 - `hover.rs`: hover presentation and feature flow.
 - `analysis.rs`: Metacat type/profile lookup helpers.
