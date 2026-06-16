@@ -5,6 +5,7 @@ edition = "2024"
 description = "Language server for Metacat"
 repository = "https://github.com/statusfailed/metacat"
 license = "MIT OR Apache-2.0"
+publish = false
 
 [[bin]]
 name = "metacat-lsp"
