@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 hexpr = { workspace = true }
-metacat = { path = "../metacat" }
+metacat = { version = "0.2.2", path = "../metacat" }
 serde_json = "1.0.150"
 tokio = { workspace = true, features = ["io-std", "macros", "rt-multi-thread"] }
 tower-lsp = { workspace = true }
