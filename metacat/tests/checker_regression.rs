@@ -48,7 +48,6 @@ fn eta_mu_counterexample_result() -> Result<(), Error<hexpr::Operation>> {
 }
 
 #[test]
-#[ignore = "current checker is too permissive; enable after explicit spider evaluation is wired in"]
 fn eta_mu_counterexample_is_rejected() {
     assert!(
         eta_mu_counterexample_result().is_err(),
