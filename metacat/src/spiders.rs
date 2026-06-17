@@ -26,6 +26,13 @@ pub enum ExtractSpidersError {
     LabelMismatch,
 }
 
+/// Result of spider extraction, including a representative for each input node.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpiderExtraction<O, A> {
+    pub graph: OpenHypergraph<O, WithSpiders<O, A>>,
+    pub node_map: Vec<Option<NodeId>>,
+}
+
 /// Replace all implicit node sharing in `f` by explicit spider edges.
 ///
 /// The returned graph has an empty quotient relation. Each original operation
@@ -41,8 +48,22 @@ where
     O: Clone + PartialEq,
     A: Clone,
 {
+    extract_spiders_with_node_map(f).map(|extraction| extraction.graph)
+}
+
+/// Like [`extract_spiders`], but also returns one representative output node
+/// for each input node.
+pub fn extract_spiders_with_node_map<O, A>(
+    f: &OpenHypergraph<O, A>,
+) -> Result<SpiderExtraction<O, A>, ExtractSpidersError>
+where
+    O: Clone + PartialEq,
+    A: Clone,
+{
+    let original_node_count = f.hypergraph.nodes.len();
     let mut f = f.clone();
-    f.quotient()
+    let q = f
+        .quotient()
         .map_err(|_| ExtractSpidersError::LabelMismatch)?;
 
     let mut spiders: Vec<Component<O>> = f
@@ -93,6 +114,20 @@ where
         spiders[target.0].targets.push(node);
     }
 
+    let representatives: Vec<Option<NodeId>> = spiders
+        .iter()
+        .map(|component| {
+            component
+                .targets
+                .first()
+                .or_else(|| component.sources.first())
+                .copied()
+        })
+        .collect();
+    let node_map = (0..original_node_count)
+        .map(|node| representatives[q.table[node]])
+        .collect();
+
     for component in spiders {
         if component.sources.is_empty() && component.targets.is_empty() {
             continue;
@@ -106,7 +141,10 @@ where
         );
     }
 
-    Ok(out)
+    Ok(SpiderExtraction {
+        graph: out,
+        node_map,
+    })
 }
 
 // After quotienting, each remaining node represents one implicit spider.

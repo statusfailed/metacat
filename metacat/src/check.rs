@@ -1,10 +1,11 @@
-use open_hypergraphs::lax::functor::Functor;
+use open_hypergraphs::lax::functor::{self, Functor};
 use open_hypergraphs::lax::*;
 use open_hypergraphs::strict::vec::FiniteFunction;
 use std::fmt::Debug;
 use thiserror::Error;
 
 //use crate::ssa::{SSA, ssa};
+use crate::spiders::{extract_spiders, extract_spiders_with_node_map, ExtractSpidersError, WithSpiders};
 use crate::ssa::{SSAError, ssa};
 use crate::theory::Theory;
 use crate::tree::*;
@@ -21,6 +22,8 @@ pub enum Error<O> {
     PartialResult(#[from] PartialResult<O>),
     #[error("Unable to quotient type map {0:?}")]
     InvalidQuotient(FiniteFunction),
+    #[error("Unable to extract spiders")]
+    ExtractSpiders(#[from] ExtractSpidersError),
 }
 
 #[derive(Debug, Error)]
@@ -47,40 +50,65 @@ pub fn check(
 ) -> Result<Vec<Tree<(), Operation>>, Error<Operation>> {
     //////////////////////////////////////////
     // Compute the *type map* `source ; arrow.s† ; arrow.t ; target†`
-    let mut fwd = dual::into_fwd(source);
-    let mut rev = dual::into_rev(target);
+    let mut fwd = dual::into_fwd(source).map_edges(WithSpiders::Operation);
+    let mut rev = dual::into_rev(target).map_edges(WithSpiders::Operation);
     fwd.quotient().map_err(Error::InvalidQuotient)?;
     rev.quotient().map_err(Error::InvalidQuotient)?;
     arrow.quotient().map_err(Error::InvalidQuotient)?;
 
     // Compute the type map and witness, telling us *where the type map is*
-    let type_map = AsType(theory).map_arrow(arrow);
+    let (type_map, witness) = functor::map_arrow_witness(&AsType(theory), arrow)
+        .ok_or(Error::<Operation>::InvalidTypeMaps)?;
 
     // Compose together laxly
-    let mut type_term = fwd
+    let type_term = fwd
         .lax_compose(&type_map)
         .and_then(|f| f.lax_compose(&rev))
         .ok_or(Error::<Operation>::InvalidTypeMaps)?;
+    let extraction = extract_spiders_with_node_map(&type_term)?;
+    let type_term = extraction.graph.map_edges(flatten_spiders);
 
     //////////////////////////////////////////
     // Compute types, then select only those from nodes corresponding to nodes in the original term
 
-    // quotient and keep the quotient map
-    let q = type_term.quotient().map_err(Error::InvalidQuotient)?;
-
-    // Fetch subset of nodes corresponding to type_map nodes
-    // NOTE: we rely on the type functor preserving the size of objects
     let offset = fwd.hypergraph.nodes.len();
-    let size = arrow.hypergraph.nodes.len();
-    let indices: Vec<usize> = (offset..offset + size).map(|i| q.table[i]).collect();
+    let indices = witness_indices(&witness, offset, &extraction.node_map)
+        .ok_or(Error::<Operation>::InvalidTypeMaps)?;
 
     let results = eval_type(type_term).map_err(|err| project_check_error(err, &indices))?;
     Ok(indices.iter().map(|&i| results[i].clone()).collect())
 }
 
+fn flatten_spiders<O>(op: WithSpiders<(), WithSpiders<(), Dual<O>>>) -> WithSpiders<(), Dual<O>> {
+    match op {
+        WithSpiders::Spider(()) => WithSpiders::Spider(()),
+        WithSpiders::Operation(inner) => inner,
+    }
+}
+
+fn witness_indices(
+    witness: &open_hypergraphs::strict::vec::IndexedCoproduct<FiniteFunction>,
+    offset: usize,
+    node_map: &[Option<NodeId>],
+) -> Option<Vec<usize>> {
+    let mut cursor = 0;
+    let mut result = Vec::with_capacity(witness.sources.table.len());
+    for node in 0..witness.sources.table.len() {
+        let segment_len = witness.sources.table[node];
+        let mapped_node = match segment_len {
+            0 => return None,
+            _ => witness.values.table[cursor],
+        };
+        let extracted_node = node_map[offset + mapped_node]?;
+        result.push(extracted_node.0);
+        cursor += segment_len;
+    }
+    Some(result)
+}
+
 /// Evaluate a type map
 pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
-    f: OpenHypergraph<(), Dual<O>>,
+    f: OpenHypergraph<(), WithSpiders<(), Dual<O>>>,
 ) -> Result<Vec<Tree<(), O>>, Error<O>> {
     // evaluation state initialized all to None, so that source `s` becomes `Leaf s`
     let state: Vec<Option<Tree<(), O>>> = vec![None; f.hypergraph.nodes.len()];
@@ -88,7 +116,7 @@ pub fn eval_type<O: Clone + Eq + Debug + std::fmt::Display>(
 }
 
 pub fn eval_type_with<O: Clone + Eq + Debug + std::fmt::Display>(
-    f: OpenHypergraph<(), Dual<O>>,
+    f: OpenHypergraph<(), WithSpiders<(), Dual<O>>>,
     mut state: Vec<Option<Tree<(), O>>>,
 ) -> Result<Vec<Tree<(), O>>, Error<O>> {
     for ssa_value in ssa(f.to_strict())? {
@@ -105,7 +133,7 @@ pub fn eval_type_with<O: Clone + Eq + Debug + std::fmt::Display>(
 
         match ssa_value.op {
             // Push a symbol
-            Dual::Fwd(arr) => {
+            WithSpiders::Operation(Dual::Fwd(arr)) => {
                 // Write a tree into each target whose root is this 'arr', recording the *output
                 // port* i for each value.
                 for (i, node_id) in ssa_value.targets.iter().enumerate() {
@@ -121,7 +149,7 @@ pub fn eval_type_with<O: Clone + Eq + Debug + std::fmt::Display>(
             }
 
             // Pop a symbol
-            Dual::Rev(op) => {
+            WithSpiders::Operation(Dual::Rev(op)) => {
                 // Ensure each input to a Rev op has the expected op label and port,
                 // and ensure *all* input trees have the same children.
                 let mut children = None;
@@ -163,6 +191,33 @@ pub fn eval_type_with<O: Clone + Eq + Debug + std::fmt::Display>(
                     })?;
                 }
             }
+
+            WithSpiders::Spider(()) => {
+                let value = if let Some(first) = source_values.first().cloned() {
+                    for other in source_values.iter().skip(1) {
+                        if *other != first {
+                            return Err(PartialResult {
+                                partial_result: state,
+                                cause: EvalError::MergeError(
+                                    format!("{:?}", first),
+                                    format!("{:?}", other),
+                                ),
+                            }
+                            .into());
+                        }
+                    }
+                    first
+                } else {
+                    Tree::Leaf(state.len() + ssa_value.edge_id.0, ())
+                };
+
+                for node_id in ssa_value.targets.iter() {
+                    merge(&mut state[node_id.0.0], value.clone()).map_err(|cause| PartialResult {
+                        cause,
+                        partial_result: state.clone(),
+                    })?;
+                }
+            }
         };
     }
 
@@ -198,7 +253,7 @@ pub fn merge<O: Debug + Eq>(
 #[derive(Clone)]
 struct AsType<'a>(pub &'a Theory);
 
-impl Functor<(), Operation, (), Dual<Operation>> for AsType<'_> {
+impl Functor<(), Operation, (), WithSpiders<(), Dual<Operation>>> for AsType<'_> {
     fn map_object(&self, _: &()) -> impl ExactSizeIterator<Item = ()> {
         vec![()].into_iter()
     }
@@ -208,7 +263,7 @@ impl Functor<(), Operation, (), Dual<Operation>> for AsType<'_> {
         a: &Operation,
         source: &[()],
         target: &[()],
-    ) -> OpenHypergraph<(), Dual<Operation>> {
+    ) -> OpenHypergraph<(), WithSpiders<(), Dual<Operation>>> {
         let arrow = self.0.get_arrow(a).expect("missing arrow in theory");
         let (s, t) = &arrow.type_maps;
 
@@ -216,12 +271,13 @@ impl Functor<(), Operation, (), Dual<Operation>> for AsType<'_> {
         assert_eq!(source.len(), s.targets.len());
         assert_eq!(target.len(), t.targets.len());
 
-        dual::into_rev(s.clone())
+        let type_map = dual::into_rev(s.clone())
             .compose(&dual::into_fwd(t.clone()))
-            .unwrap()
+            .unwrap();
+        extract_spiders(&type_map).expect("type maps have unit node labels")
     }
 
-    fn map_arrow(&self, f: &OpenHypergraph<(), Operation>) -> OpenHypergraph<(), Dual<Operation>> {
+    fn map_arrow(&self, f: &OpenHypergraph<(), Operation>) -> OpenHypergraph<(), WithSpiders<(), Dual<Operation>>> {
         functor::try_define_map_arrow(self, f).unwrap()
     }
 }
