@@ -1,5 +1,6 @@
 // Definitions as adjoined operations
 pub mod definition;
+pub mod spiders;
 pub mod ssa;
 pub mod tree;
 
