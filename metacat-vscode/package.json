@@ -13,10 +13,28 @@
   ],
   "activationEvents": [
     "onLanguage:metacat",
-    "onCommand:metacat.checkCurrentFile"
+    "onCommand:metacat.checkCurrentFile",
+    "onView:metacat.project"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "metacat",
+          "title": "Metacat",
+          "icon": "resources/metacat-cat.svg"
+        }
+      ]
+    },
+    "views": {
+      "metacat": [
+        {
+          "id": "metacat.project",
+          "name": "Project"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "metacat.checkCurrentFile",
