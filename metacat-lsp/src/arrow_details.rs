@@ -46,6 +46,7 @@ pub fn arrow_details_at_position(
     position: Position,
 ) -> Option<ArrowDetails> {
     let offset = offset_at_position(text, position)?;
+    let project_declarations = project_arrow_declarations(text, project_texts);
     let declarations = scan_arrow_declarations(text);
     let token = token_at(text, offset, is_operation_char);
     let exact_declaration_name = declarations.iter().find(|declaration| {
@@ -55,11 +56,24 @@ pub fn arrow_details_at_position(
                 && token.end <= declaration.name.end
         })
     });
-    let referenced_declaration = declarations.iter().find(|declaration| {
-        token.as_ref().is_some_and(|token| {
-            token.text == declaration.name.text && !matches!(token.text.as_str(), ":" | "->" | "=")
+    let referenced_declaration = token
+        .as_ref()
+        .filter(|token| !matches!(token.text.as_str(), ":" | "->" | "="))
+        .and_then(|token| {
+            definition_body_theory_at(text, token.start).and_then(|theory| {
+                project_declarations.iter().find(|declaration| {
+                    declaration.theory == theory && declaration.name.text == token.text
+                })
+            })
         })
-    });
+        .or_else(|| {
+            declarations.iter().find(|declaration| {
+                token.as_ref().is_some_and(|token| {
+                    token.text == declaration.name.text
+                        && !matches!(token.text.as_str(), ":" | "->" | "=")
+                })
+            })
+        });
     let enclosing = declarations
         .iter()
         .find(|declaration| offset >= declaration.start && offset <= declaration.end);
@@ -245,6 +259,18 @@ fn scan_arrow_declarations(text: &str) -> Vec<ArrowDeclaration> {
     declarations
 }
 
+fn project_arrow_declarations(
+    current_text: &str,
+    project_texts: &[String],
+) -> Vec<ArrowDeclaration> {
+    let mut declarations = Vec::new();
+    for project_text in project_texts {
+        declarations.extend(scan_arrow_declarations(project_text));
+    }
+    declarations.extend(scan_arrow_declarations(current_text));
+    declarations
+}
+
 fn parse_arrow_declaration(text: &str, start: usize, end: usize) -> Option<ArrowDeclaration> {
     let tokens = top_level_tokens(text, start + 1, end);
     let kind = tokens.first()?.text.as_str();
@@ -284,6 +310,34 @@ fn parse_arrow_declaration(text: &str, start: usize, end: usize) -> Option<Arrow
         source_typevars,
         target_typevars,
     })
+}
+
+fn definition_body_theory_at(text: &str, offset: usize) -> Option<String> {
+    let definition = enclosing_arrow_declaration(text, offset)?;
+    if definition.declaration_kind != "def"
+        || offset < definition_body_start(text, definition.start, definition.end)?
+    {
+        return None;
+    }
+    Some(definition.theory)
+}
+
+fn enclosing_arrow_declaration(text: &str, offset: usize) -> Option<ArrowDeclaration> {
+    delimiter_stack_at(text, offset)
+        .iter()
+        .rev()
+        .filter(|delimiter| delimiter.char == '(')
+        .find_map(|delimiter| {
+            let end = matching_close_offset(text, delimiter.offset)?;
+            parse_arrow_declaration(text, delimiter.offset, end)
+        })
+}
+
+fn definition_body_start(text: &str, start: usize, end: usize) -> Option<usize> {
+    top_level_tokens(text, start + 1, end)
+        .into_iter()
+        .find(|token| token.text == "=")
+        .map(|token| token.end)
 }
 
 #[cfg(test)]
@@ -330,6 +384,25 @@ mod tests {
         assert_eq!(details.metavariables, ["ph", "ps"]);
         assert_eq!(details.pretty_metavariables, ["m0", "m1"]);
         assert_eq!(details.error, None);
+    }
+
+    #[test]
+    fn arrow_details_on_definition_body_operation_reports_referenced_arrow() {
+        let text = include_str!("../../fol.hex");
+        let definition_offset = text.find("(def id").unwrap();
+        let body_arrow_offset =
+            text[definition_offset..].find("ax-mp").unwrap() + definition_offset;
+        let details = arrow_details_at_position(
+            text,
+            &[text.to_string()],
+            position_at_offset(text, body_arrow_offset),
+        )
+        .unwrap();
+
+        assert_eq!(details.name, "ax-mp");
+        assert_eq!(details.declaration_kind, "arr");
+        assert_eq!(details.source, "{|-(m0), |-(m0 -> m1)}");
+        assert_eq!(details.target, "|-(m1)");
     }
 
     #[test]
