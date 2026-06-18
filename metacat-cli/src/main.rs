@@ -143,7 +143,10 @@ fn check_one_theory(theory_id: &TheoryId, theory: &Theory) {
 
     log::info!("checking definitions in {}", theory_id);
 
-    for (operation, declaration) in arrows.iter().filter(|(_, arrow)| arrow.definition.is_some()) {
+    for (operation, declaration) in arrows
+        .iter()
+        .filter(|(_, arrow)| arrow.definition.is_some())
+    {
         let mut term = declaration.definition.clone().unwrap();
         let (source, target) = declaration.type_maps.clone();
         log::info!("checking definition {} in {}", operation, theory_id);
@@ -171,7 +174,10 @@ fn check_one_theory(theory_id: &TheoryId, theory: &Theory) {
                     declaration.raw.type_maps.0,
                     declaration.raw.type_maps.1
                 );
-                println!("Checking '{} {}' failed: {}", theory_id, declaration.name, e);
+                println!(
+                    "Checking '{} {}' failed: {}",
+                    theory_id, declaration.name, e
+                );
             }
         }
     }

@@ -1,3 +1,4 @@
+use crate::arrow_details::{ArrowDetails, ArrowDetailsParams, arrow_details_at_position};
 use crate::capabilities::server_capabilities;
 use crate::diagnostics::diagnostics_for_document;
 use crate::documents::DocumentStore;
@@ -29,6 +30,18 @@ impl Backend {
         self.client
             .publish_diagnostics(uri, diagnostics_for_document(text, &project.texts), None)
             .await;
+    }
+
+    pub async fn arrow_details(&self, params: ArrowDetailsParams) -> Result<Option<ArrowDetails>> {
+        let Some(text) = self.documents.get(&params.uri).await else {
+            return Ok(None);
+        };
+        let project = context_for_document(&params.uri, &text);
+        Ok(arrow_details_at_position(
+            &text,
+            &project.texts,
+            params.position,
+        ))
     }
 }
 

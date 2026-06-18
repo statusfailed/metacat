@@ -14,6 +14,8 @@
   "activationEvents": [
     "onLanguage:metacat",
     "onCommand:metacat.checkCurrentFile",
+    "onCommand:metacat.focusArrowPanel",
+    "onCommand:metacat.refreshArrowPanel",
     "onView:metacat.project"
   ],
   "main": "./out/extension.js",
@@ -31,7 +33,8 @@
       "metacat": [
         {
           "id": "metacat.project",
-          "name": "Project"
+          "name": "Arrow",
+          "type": "webview"
         }
       ]
     },
@@ -39,6 +42,14 @@
       {
         "command": "metacat.checkCurrentFile",
         "title": "Metacat: Check Current File"
+      },
+      {
+        "command": "metacat.focusArrowPanel",
+        "title": "Metacat: Focus Arrow Panel"
+      },
+      {
+        "command": "metacat.refreshArrowPanel",
+        "title": "Metacat: Refresh Arrow Panel"
       }
     ],
     "configuration": {
