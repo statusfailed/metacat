@@ -467,9 +467,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hexpr"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e9e7462033d29eb2535c1013c1a36f508416904945bb6a330f718799ade4c77"
+checksum = "abe63af2d952ec1c8d986305192774380d5d4419d464939737917c727885ca65"
 dependencies = [
  "open-hypergraphs",
  "pest",
