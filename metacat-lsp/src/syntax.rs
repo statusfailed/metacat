@@ -52,7 +52,7 @@ pub struct OperationElement {
     pub start: usize,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Token {
     pub text: String,
     pub start: usize,

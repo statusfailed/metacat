@@ -13,14 +13,43 @@
   ],
   "activationEvents": [
     "onLanguage:metacat",
-    "onCommand:metacat.checkCurrentFile"
+    "onCommand:metacat.checkCurrentFile",
+    "onCommand:metacat.focusArrowPanel",
+    "onCommand:metacat.refreshArrowPanel",
+    "onView:metacat.project"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "metacat",
+          "title": "Metacat",
+          "icon": "resources/metacat-cat.svg"
+        }
+      ]
+    },
+    "views": {
+      "metacat": [
+        {
+          "id": "metacat.project",
+          "name": "Arrow",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "metacat.checkCurrentFile",
         "title": "Metacat: Check Current File"
+      },
+      {
+        "command": "metacat.focusArrowPanel",
+        "title": "Metacat: Focus Arrow Panel"
+      },
+      {
+        "command": "metacat.refreshArrowPanel",
+        "title": "Metacat: Refresh Arrow Panel"
       }
     ],
     "configuration": {

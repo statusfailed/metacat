@@ -228,7 +228,9 @@ impl Functor<(), Operation, (), Dual<Operation>> for AsType<'_> {
 
 fn project_check_error<O: Clone>(err: Error<O>, indices: &[usize]) -> Error<O> {
     match err {
-        Error::PartialResult(partial) => Error::PartialResult(project_partial_result(partial, indices)),
+        Error::PartialResult(partial) => {
+            Error::PartialResult(project_partial_result(partial, indices))
+        }
         other => other,
     }
 }

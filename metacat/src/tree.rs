@@ -88,7 +88,11 @@ mod tests {
             "*",
             0,
             vec![
-                Tree::Node("+", 0, vec![Tree::Node("1", 0, vec![]), Tree::Node("1", 0, vec![])]),
+                Tree::Node(
+                    "+",
+                    0,
+                    vec![Tree::Node("1", 0, vec![]), Tree::Node("1", 0, vec![])],
+                ),
                 Tree::Node("2", 0, vec![]),
             ],
         );
