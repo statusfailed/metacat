@@ -239,6 +239,8 @@ fn normalize_nat_hexpr(hexpr: &Hexpr) -> Hexpr {
             sources: sources.clone(),
             targets: targets.clone(),
         },
+        // Object annotations are not nat arrow expressions.
+        Hexpr::Hole | Hexpr::Wire(_) => hexpr.clone(),
         Hexpr::Operation(op) => normalize_nat_operation(op),
     }
 }
@@ -398,6 +400,68 @@ mod tests {
             vec!["1".parse()?, "1".parse()?]
         );
         assert_eq!(arrow.type_maps.1.hypergraph.edges, vec!["1".parse()?]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn loads_typed_wires_in_nat_and_user_signatures() -> Result<(), Box<dyn std::error::Error>> {
+        let file = TheorySet::from_text(
+            r#"
+            (theory typed.syntax nat {
+              (arr carrier : ^One -> ^One)
+            })
+
+            (theory typed.proof typed.syntax {
+              (arr typed-id : ^A -> ^A)
+              (def typed-id-proof : ^A -> ^A = [x^A])
+            })
+            "#,
+        )?;
+
+        let syntax_id = TheoryId("typed.syntax".parse()?);
+        let proof_id = TheoryId("typed.proof".parse()?);
+        let Theory::Theory {
+            arrows: syntax_arrows,
+            ..
+        } = file.theories.get(&syntax_id).unwrap()
+        else {
+            panic!("expected syntax theory");
+        };
+        let proof_theory = file.theories.get(&proof_id).unwrap();
+        let Theory::Theory {
+            arrows: proof_arrows,
+            ..
+        } = proof_theory
+        else {
+            panic!("expected proof theory");
+        };
+
+        let carrier = syntax_arrows.get(&"carrier".parse()?).unwrap();
+        assert_eq!(carrier.type_maps.0.sources.len(), 1);
+        assert_eq!(carrier.type_maps.0.targets.len(), 1);
+
+        let typed_id = proof_arrows.get(&"typed-id".parse()?).unwrap();
+        assert_eq!(typed_id.type_maps.0.sources.len(), 1);
+        assert_eq!(typed_id.type_maps.0.targets.len(), 1);
+
+        let proof = proof_arrows.get(&"typed-id-proof".parse()?).unwrap();
+        let definition = proof.definition.as_ref().unwrap();
+        assert_eq!(definition.sources.len(), 1);
+        assert_eq!(definition.targets.len(), 1);
+        assert_eq!(definition.sources, definition.targets);
+
+        let mut definition = definition.clone();
+        let result = crate::check::check(
+            proof_theory,
+            proof.type_maps.0.clone(),
+            proof.type_maps.1.clone(),
+            &mut definition,
+        );
+        assert!(
+            result.is_ok(),
+            "typed-wire identity should check: {result:?}"
+        );
 
         Ok(())
     }

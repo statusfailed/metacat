@@ -152,7 +152,7 @@ where
                 collect_operations_with(part, visit);
             }
         }
-        hexpr::Hexpr::Frobenius { .. } => {}
+        hexpr::Hexpr::Frobenius { .. } | hexpr::Hexpr::Hole | hexpr::Hexpr::Wire(_) => {}
         hexpr::Hexpr::Operation(operation) => visit(operation),
     }
 }
