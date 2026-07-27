@@ -12,7 +12,7 @@
 //! However, in a (unique) special case, these definitions are inlined, so that one can write
 //! `foo : 2 -> 1` and have it auto-expanded to `foo : {1 1} -> 1` under the hood.
 
-use hexpr::{Operation, Signature};
+use hexpr::{Hexpr, Operation, Signature};
 
 /// Reserved theory name for the builtin `nat` syntax category.
 pub const NAT_THEORY_NAME: &str = "nat";
@@ -31,6 +31,11 @@ impl Signature for NatObj {
 
     fn try_parse_op(&self, op: &Operation) -> Result<Self::Arr, Self::Error> {
         Ok(NatKey(op.as_str().parse()?))
+    }
+
+    fn try_parse_object(&self, _object: &Hexpr) -> Result<Self::Obj, Self::Error> {
+        // `nat` has one generating object, represented internally by `()`.
+        Ok(())
     }
 
     fn profile(&self, op: &Self::Arr) -> (Vec<Option<Self::Obj>>, Vec<Option<Self::Obj>>) {

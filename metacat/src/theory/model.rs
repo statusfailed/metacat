@@ -10,7 +10,7 @@
 //! declarations have been registered.
 
 use super::ast::RawTheoryArrow;
-use hexpr::{Operation, Signature};
+use hexpr::{Hexpr, Operation, Signature};
 use open_hypergraphs::lax::OpenHypergraph;
 use std::collections::BTreeMap;
 
@@ -105,6 +105,11 @@ impl Signature for TheorySignature<'_> {
             .get_arrow(op)
             .map(|_| op.clone())
             .ok_or_else(|| SignatureError::NoSuchOperation(op.clone()))
+    }
+
+    fn try_parse_object(&self, _object: &Hexpr) -> Result<Self::Obj, Self::Error> {
+        // Metacat's derivation signatures are currently single-sorted.
+        Ok(())
     }
 
     fn profile(&self, op: &Self::Arr) -> (Vec<Option<Self::Obj>>, Vec<Option<Self::Obj>>) {

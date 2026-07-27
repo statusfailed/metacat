@@ -1,4 +1,4 @@
-use hexpr::{Operation, Signature};
+use hexpr::{Hexpr, Operation, Signature};
 use open_hypergraphs::lax::{Hyperedge, Hypergraph, OpenHypergraph};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -67,6 +67,10 @@ impl<S: Signature> Signature for DualSig<S> {
 
     fn try_parse_op(&self, op: &Operation) -> Result<Self::Arr, Self::Error> {
         Ok(Dual::Fwd(self.0.try_parse_op(op)?))
+    }
+
+    fn try_parse_object(&self, object: &Hexpr) -> Result<Self::Obj, Self::Error> {
+        self.0.try_parse_object(object)
     }
 
     fn profile(&self, op: &Self::Arr) -> (Vec<Option<Self::Obj>>, Vec<Option<Self::Obj>>) {
