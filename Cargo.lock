@@ -779,9 +779,9 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "open-hypergraphs"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35368b8ccf2a61fdb493242cb5b0420d6c46f0e285d1f5ab14dbd2f94e7e4f6a"
+checksum = "02448e1c0ce5b58ace5f18579dcfb1a03016f6e6976d3158297311b3d8ae4ed3"
 dependencies = [
  "num-traits",
 ]

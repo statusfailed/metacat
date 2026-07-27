@@ -3,8 +3,8 @@ members = ["metacat", "metacat-cli", "metacat-lsp"]
 resolver = "2"
 
 [workspace.dependencies]
-hexpr = "0.2.3"
-open-hypergraphs = "0.3.0"
+hexpr = "0.3.0"
+open-hypergraphs = "0.3.2"
 thiserror = "2.0.17"
 tokio = "1.48.0"
 tower-lsp = "0.20.0"
