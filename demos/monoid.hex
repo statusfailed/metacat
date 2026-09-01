@@ -1,0 +1,13 @@
+(theory obj nat {
+  # there is one object, called `X`
+  (arr X : 0 -> 1)
+})
+
+(theory map obj {
+  (arr zero : () -> X)
+  (arr add  : {X X} -> X)
+})
+
+# simple examples that should typecheck
+(def map add0 : X -> X = ({zero _} add)) # 0 + x
+(def map add3 : {X X X} -> X = ({add _} add)) # (x + y) + z
