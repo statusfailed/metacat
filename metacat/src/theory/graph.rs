@@ -1,7 +1,7 @@
 //! Theory dependency graph utilities.
 //!
 //! This module exposes the syntax-category dependency graph induced by a
-//! [`RawTheorySet`](super::ast::RawTheorySet), together with topological
+//! [`RawTheorySet`], together with topological
 //! ordering and basic graph validation.
 
 use super::ast::RawTheorySet;
@@ -66,9 +66,7 @@ pub fn syntax_dependency_graph(raw: &RawTheorySet) -> Result<SyntaxDependencyGra
 
 /// Return a topological order in which each syntax category appears before any
 /// theory that depends on it.
-pub fn topological_order(
-    graph: &SyntaxDependencyGraph,
-) -> Result<Vec<TheoryId>, GraphError> {
+pub fn topological_order(graph: &SyntaxDependencyGraph) -> Result<Vec<TheoryId>, GraphError> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum Mark {
         Visiting,
@@ -214,8 +212,8 @@ mod tests {
     }
 
     #[test]
-    fn subset_includes_transitive_dependencies_and_extensions(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn subset_includes_transitive_dependencies_and_extensions()
+    -> Result<(), Box<dyn std::error::Error>> {
         let raw = RawTheorySet::from_text(
             r#"
             (theory fol.syntax nat {
