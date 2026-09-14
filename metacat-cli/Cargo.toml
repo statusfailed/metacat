@@ -7,6 +7,12 @@ repository = "https://github.com/statusfailed/metacat"
 license = "MIT OR Apache-2.0"
 documentation = "https://docs.rs/metacat"
 
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.54", features = ["derive"] }
+colored = "3.0.0"
+metacat = { version = "0.4.0", path = "../metacat" }
+
 [[bin]]
 name = "metacat"
 path = "src/main.rs"
