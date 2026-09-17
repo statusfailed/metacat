@@ -1,5 +1,5 @@
 pub mod check;
-pub mod dual;
 pub mod theory;
 
+mod saturation;
 mod union_find;

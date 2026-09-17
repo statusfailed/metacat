@@ -1,0 +1,30 @@
+(theory obj nat {
+  # there is one object, called `X`
+  (arr Z : 0 -> 1)
+  (arr N : 0 -> 1)
+
+})
+
+(theory map obj {
+  (arr zero : [x.] -> [x])
+  (arr add  : [x . x x] -> [x])
+
+  # only for Z
+  (arr neg  : Z -> Z)
+})
+
+# simple examples that should typecheck
+(def map add0 : N -> N = ({zero _} add)) # 0 + x
+(def map add3 : {N N N} -> N = ({add _} add)) # (x + y) + z
+
+# expect sub to succeed for Z...
+(def map sub-z : {Z Z} -> Z = ({_ neg} add))
+
+########################################
+# Failing cases
+
+# ... but fail for N
+(def map sub-n : {N N} -> N = ({_ neg} add))
+
+# expect this to fail
+(def map add-n-to-z : {N Z} -> N = add)

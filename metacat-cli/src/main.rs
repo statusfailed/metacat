@@ -83,7 +83,7 @@ fn check_theory(theory_id: &TheoryId, theory: &Theory) -> usize {
         let (source, target) = declaration.type_maps.clone();
 
         match check(theory, source, target, &mut definition) {
-            Ok(()) => println!(
+            Ok(_mapping) => println!(
                 "{} {} {} : {} -> {}",
                 "[✓]".green(),
                 theory_id,
