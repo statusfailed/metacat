@@ -108,7 +108,8 @@ fn check_program(
     let names = labeled.names;
     let mut arrow = labeled.graph.map_nodes(|_| ());
     let (source, target) = declaration.type_maps.clone();
-    let mapping = check(theory, source, target, &mut arrow)?;
+    let result = check(theory, source, target, &mut arrow)?;
+    let mapping = result.proof_classes();
 
     Ok(value_collisions(&mapping, &value_nodes)
         .into_iter()

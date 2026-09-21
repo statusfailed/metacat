@@ -19,6 +19,7 @@ impl UnionFind {
         self.parent[node]
     }
 
+    #[cfg(test)]
     pub(crate) fn equivalent(&mut self, lhs: usize, rhs: usize) -> bool {
         self.find(lhs) == self.find(rhs)
     }

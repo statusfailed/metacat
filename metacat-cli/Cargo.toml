@@ -11,7 +11,9 @@ documentation = "https://docs.rs/metacat"
 anyhow = "1.0.100"
 clap = { version = "4.5.54", features = ["derive"] }
 colored = "3.0.0"
+hexpr = { workspace = true }
 metacat = { version = "0.4.0", path = "../metacat" }
+open-hypergraphs-dot = { version = "0.2.4", features = ["svg"] }
 
 [[bin]]
 name = "metacat"

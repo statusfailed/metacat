@@ -11,10 +11,25 @@ use thiserror::Error;
 
 pub type CheckGraph = OpenHypergraph<(), Operation>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Head {
-    pub operation: Operation,
-    pub port: usize,
+/// The graph and node maps computed for `Φ(path(p; s, t))` while checking a
+/// derivation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CheckResult {
+    /// The graph representing `Φ(path(p; s, t))`.
+    pub phi: CheckGraph,
+    /// The quotient `V(Φ(path(p; s, t))) → V(Φ(path(p; s, t)))/σ`.
+    pub saturation: FiniteFunction,
+    /// The witness from proof nodes to vertices of `Φ(path(p; s, t))`.
+    pub proof_nodes: FiniteFunction,
+}
+
+impl CheckResult {
+    /// Map each node of the checked proof to its wire-saturation class.
+    pub fn proof_classes(&self) -> FiniteFunction {
+        self.proof_nodes
+            .compose(&self.saturation)
+            .expect("a check result's node maps have compatible boundaries")
+    }
 }
 
 #[derive(Debug, Error)]
@@ -29,12 +44,12 @@ pub enum Error {
     BoundaryMismatch { boundary: usize },
     #[error("Boundary metavariables {first} and {second} were identified")]
     BoundaryCollision { first: usize, second: usize },
-    #[error("Boundary metavariable {boundary} has constructor heads {heads:?}")]
-    HeadedBoundary { boundary: usize, heads: Vec<Head> },
+    #[error("Boundary metavariable {boundary} has a constructor definition")]
+    HeadedBoundary { boundary: usize },
     #[error("Node class {class} contains inconsistent node labels")]
     InconsistentNodeLabels { class: usize },
-    #[error("Node class {class} has conflicting constructor heads {heads:?}")]
-    HeadClash { class: usize, heads: Vec<Head> },
+    #[error("Node class {class} has conflicting constructor definitions")]
+    DefinitionClash { class: usize },
     #[error("Node class {class} fails the occurs check")]
     OccursCheck { class: usize },
 }
@@ -46,19 +61,17 @@ impl From<SaturationError> for Error {
     }
 }
 
-/// Check a first-order derivation and return wire saturation transported back
-/// to the nodes of `arrow`.
+/// Check a first-order derivation and return its saturated path witness.
 ///
-/// The result is a quotient map whose domain is the (quotiented) node set of
-/// `arrow`. Two arrow nodes have the same image exactly when their path
-/// witnesses are equivalent under wire saturation. Callers may inspect this
-/// map to enforce application-specific restrictions on identification.
+/// [`CheckResult::proof_classes`] transports wire saturation back to the nodes
+/// of `arrow`, allowing callers to enforce application-specific restrictions
+/// on which proof nodes may be identified.
 pub fn check(
     theory: &Theory,
     source: Term,
     target: Term,
     arrow: &mut Term,
-) -> Result<FiniteFunction, Error> {
+) -> Result<CheckResult, Error> {
     arrow.quotient().map_err(Error::InvalidQuotient)?;
     validate_proof_shapes(theory, arrow)?;
     let (mapped_proof, witness) =
@@ -66,12 +79,20 @@ pub fn check(
     let (path, path_quotient, mapped_proof_offset) = compose_path(source, target, mapped_proof)?;
     let mut arrow_nodes = transport_witness(&witness, mapped_proof_offset, &path_quotient)?;
 
-    let (closed, closure_quotient) = frobenius_closure(path)?;
+    let (phi, closure_quotient) = frobenius_closure(path)?;
     transport_nodes(&mut arrow_nodes, &closure_quotient)?;
 
-    let mut relation = wire_saturation(&closed)?;
-    validate(&closed, &mut relation)?;
-    Ok(induced_mapping(&mut relation, &arrow_nodes))
+    let mut relation = wire_saturation(&phi)?;
+    let saturation = quotient_mapping(&mut relation, phi.hypergraph.nodes.len());
+    validate(&phi, &saturation)?;
+    let proof_nodes = FiniteFunction::new(VecArray(arrow_nodes), phi.hypergraph.nodes.len())
+        .expect("transported proof nodes should belong to Φ(path(p; s, t))");
+
+    Ok(CheckResult {
+        phi,
+        saturation,
+        proof_nodes,
+    })
 }
 
 /// Fallible, validating wrapper that applies `PathFunctor` to a proof term.
@@ -110,7 +131,7 @@ pub fn path(theory: &Theory, source: Term, target: Term, arrow: Term) -> Result<
     compose_path(source, target, mapped_proof).map(|(path, _, _)| path)
 }
 
-/// Construct the graph representing `Phi(path(p; s, t))`.
+/// Construct the graph representing `Φ(path(p; s, t))`.
 pub fn check_graph(
     theory: &Theory,
     source: Term,
@@ -195,12 +216,11 @@ fn transport_nodes(nodes: &mut [usize], quotient: &FiniteFunction) -> Result<(),
     Ok(())
 }
 
-/// Compute the relation on proof nodes induced by the wire saturation relation
-fn induced_mapping(relation: &mut UnionFind, nodes: &[usize]) -> FiniteFunction {
+/// Convert union-find representatives into a compact quotient map.
+fn quotient_mapping(relation: &mut UnionFind, node_count: usize) -> FiniteFunction {
     let mut representatives = Vec::new();
-    let table = nodes
-        .iter()
-        .map(|&node| {
+    let table = (0..node_count)
+        .map(|node| {
             let representative = relation.find(node);
             representatives
                 .iter()
@@ -248,28 +268,21 @@ impl Functor<(), Operation, (), Operation> for PathFunctor<'_> {
     }
 }
 
-#[derive(Default)]
-struct ClassInfo {
-    heads: Vec<Head>,
+#[derive(Clone, Copy)]
+struct DefinitionWitness {
+    edge: usize,
+    output: usize,
 }
 
-/// Record a distinct constructor head, ignoring repeated occurrences of the
-/// same operation and output port.
-fn insert_head(heads: &mut Vec<Head>, head: Head) {
-    if !heads.contains(&head) {
-        heads.push(head);
-    }
-}
-
-/// Check label and constructor-head consistency in every saturated class,
-/// returning the head information needed for boundary validation.
-fn class_info<'a, O: Eq>(
-    graph: &'a OpenHypergraph<O, Operation>,
-    relation: &mut UnionFind,
-) -> Result<Vec<ClassInfo>, Error> {
-    let mut labels: Vec<Option<&'a O>> = (0..graph.hypergraph.nodes.len()).map(|_| None).collect();
+/// Check that each saturated class has at most one constructor definition,
+/// recording only whether the class is headed for the boundary condition.
+fn check_consistency<O: Eq>(
+    graph: &OpenHypergraph<O, Operation>,
+    saturation: &FiniteFunction,
+) -> Result<Vec<bool>, Error> {
+    let mut labels: Vec<Option<&O>> = (0..saturation.target).map(|_| None).collect();
     for (node, label) in graph.hypergraph.nodes.iter().enumerate() {
-        let class = relation.find(node);
+        let class = saturation.table.0[node];
         match labels[class] {
             Some(known) if known != label => {
                 return Err(Error::InconsistentNodeLabels { class });
@@ -279,53 +292,64 @@ fn class_info<'a, O: Eq>(
         }
     }
 
-    let mut classes: Vec<ClassInfo> = (0..graph.hypergraph.nodes.len())
-        .map(|_| ClassInfo::default())
-        .collect();
-    for (edge_id, operation) in graph.hypergraph.edges.iter().enumerate() {
-        for (port, node) in graph.hypergraph.adjacency[edge_id]
-            .targets
-            .iter()
-            .enumerate()
-        {
-            let class = relation.find(node.0);
-            insert_head(
-                &mut classes[class].heads,
-                Head {
-                    operation: operation.clone(),
-                    port,
-                },
-            );
+    let mut witnesses = vec![None; saturation.target];
+    for (edge, adjacency) in graph.hypergraph.adjacency.iter().enumerate() {
+        for (output, node) in adjacency.targets.iter().enumerate() {
+            let class = saturation.table.0[node.0];
+            let candidate = DefinitionWitness { edge, output };
+            match witnesses[class] {
+                None => witnesses[class] = Some(candidate),
+                Some(known) if same_definition(known, candidate, graph, saturation) => {}
+                Some(_) => return Err(Error::DefinitionClash { class }),
+            }
         }
     }
 
-    for (class, info) in classes.iter().enumerate() {
-        if relation.find(class) == class && info.heads.len() > 1 {
-            return Err(Error::HeadClash {
-                class,
-                heads: info.heads.clone(),
-            });
-        }
-    }
-    Ok(classes)
+    Ok(witnesses
+        .into_iter()
+        .map(|witness| witness.is_some())
+        .collect())
+}
+
+/// Compare constructor definitions through their saturated argument classes.
+fn same_definition<O>(
+    left: DefinitionWitness,
+    right: DefinitionWitness,
+    graph: &OpenHypergraph<O, Operation>,
+    saturation: &FiniteFunction,
+) -> bool {
+    let left_edge = &graph.hypergraph.adjacency[left.edge];
+    let right_edge = &graph.hypergraph.adjacency[right.edge];
+    graph.hypergraph.edges[left.edge] == graph.hypergraph.edges[right.edge]
+        && left.output == right.output
+        && left_edge.targets.len() == right_edge.targets.len()
+        && left_edge.sources.len() == right_edge.sources.len()
+        && left_edge
+            .sources
+            .iter()
+            .zip(&right_edge.sources)
+            .all(|(left_source, right_source)| {
+                saturation.table.0[left_source.0] == saturation.table.0[right_source.0]
+            })
 }
 
 /// Check the saturated graph's consistency, well-foundedness, and the three
 /// boundary conditions characterizing an identity morphism.
-fn validate(graph: &CheckGraph, relation: &mut UnionFind) -> Result<(), Error> {
+fn validate(graph: &CheckGraph, saturation: &FiniteFunction) -> Result<(), Error> {
     if graph.sources.len() != graph.targets.len() {
         return Err(Error::BoundaryArityMismatch);
     }
 
-    let classes = class_info(graph, relation)?;
-    check_well_founded(graph, relation)?;
+    let headed = check_consistency(graph, saturation)?;
+    check_well_founded(graph, saturation)?;
 
     let mut boundary_classes = Vec::with_capacity(graph.sources.len());
     for (boundary, (source, target)) in graph.sources.iter().zip(&graph.targets).enumerate() {
-        if !relation.equivalent(source.0, target.0) {
+        let source_class = saturation.table.0[source.0];
+        let target_class = saturation.table.0[target.0];
+        if source_class != target_class {
             return Err(Error::BoundaryMismatch { boundary });
         }
-        let source_class = relation.find(source.0);
         if let Some(first) = boundary_classes
             .iter()
             .position(|other| *other == source_class)
@@ -335,11 +359,8 @@ fn validate(graph: &CheckGraph, relation: &mut UnionFind) -> Result<(), Error> {
                 second: boundary,
             });
         }
-        if !classes[source_class].heads.is_empty() {
-            return Err(Error::HeadedBoundary {
-                boundary,
-                heads: classes[source_class].heads.clone(),
-            });
+        if headed[source_class] {
+            return Err(Error::HeadedBoundary { boundary });
         }
         boundary_classes.push(source_class);
     }
@@ -349,34 +370,26 @@ fn validate(graph: &CheckGraph, relation: &mut UnionFind) -> Result<(), Error> {
 
 /// Perform the occurs check by requiring the saturated classes' directed
 /// constructor-dependency graph to be acyclic.
-fn check_well_founded(graph: &CheckGraph, relation: &mut UnionFind) -> Result<(), Error> {
-    let node_count = graph.hypergraph.nodes.len();
-    let representatives: Vec<usize> = (0..node_count).map(|node| relation.find(node)).collect();
-    let mut adjacency = vec![Vec::new(); node_count];
-    let mut indegree = vec![0usize; node_count];
+fn check_well_founded(graph: &CheckGraph, saturation: &FiniteFunction) -> Result<(), Error> {
+    let class_count = saturation.target;
+    let mut adjacency = vec![Vec::new(); class_count];
+    let mut indegree = vec![0usize; class_count];
 
     for edge in &graph.hypergraph.adjacency {
         for source in &edge.sources {
-            let source_class = representatives[source.0];
+            let source_class = saturation.table.0[source.0];
             for target in &edge.targets {
-                let target_class = representatives[target.0];
+                let target_class = saturation.table.0[target.0];
                 adjacency[source_class].push(target_class);
                 indegree[target_class] += 1;
             }
         }
     }
 
-    let class_count = representatives
+    let mut stack: Vec<usize> = indegree
         .iter()
         .enumerate()
-        .filter(|(node, representative)| *node == **representative)
-        .count();
-    let mut stack: Vec<usize> = representatives
-        .iter()
-        .enumerate()
-        .filter_map(|(node, representative)| {
-            (node == *representative && indegree[node] == 0).then_some(node)
-        })
+        .filter_map(|(class, degree)| (*degree == 0).then_some(class))
         .collect();
     let mut visited = 0;
 
@@ -395,9 +408,9 @@ fn check_well_founded(graph: &CheckGraph, relation: &mut UnionFind) -> Result<()
         // another remaining class. Following those predecessors must enter a
         // cycle, so the reported class really does satisfy reach(C, C), rather
         // than merely lying downstream of a cycle.
-        let is_remaining = |node: usize| representatives[node] == node && indegree[node] > 0;
-        let mut predecessor = vec![None; node_count];
-        for source in (0..node_count).filter(|&node| is_remaining(node)) {
+        let is_remaining = |class: usize| indegree[class] > 0;
+        let mut predecessor = vec![None; class_count];
+        for source in (0..class_count).filter(|&class| is_remaining(class)) {
             for &target in &adjacency[source] {
                 if is_remaining(target) {
                     predecessor[target] = Some(source);
@@ -405,8 +418,8 @@ fn check_well_founded(graph: &CheckGraph, relation: &mut UnionFind) -> Result<()
             }
         }
 
-        let mut class = (0..node_count)
-            .find(|&node| is_remaining(node))
+        let mut class = (0..class_count)
+            .find(|&class| is_remaining(class))
             .expect("an unvisited class should remain after detecting a cycle");
         for _ in 0..class_count {
             class = predecessor[class]
@@ -431,32 +444,56 @@ mod tests {
         graph.new_node(())
     }
 
+    fn saturation_of(graph: &CheckGraph) -> FiniteFunction {
+        let mut relation = wire_saturation(graph).expect("valid saturation");
+        quotient_mapping(&mut relation, graph.hypergraph.nodes.len())
+    }
+
     #[test]
-    fn consistency_allows_repeated_heads() {
+    fn consistency_allows_repeated_definitions() {
+        let mut graph = CheckGraph::empty();
+        let input = node(&mut graph);
+        let output = node(&mut graph);
+        graph.new_edge(operation("f"), ([input], [output]));
+        graph.new_edge(operation("f"), ([input], [output]));
+        let saturation = saturation_of(&graph);
+
+        check_consistency(&graph, &saturation).expect("repeated definitions are consistent");
+    }
+
+    #[test]
+    fn consistency_rejects_one_head_with_distinct_arguments() {
         let mut graph = CheckGraph::empty();
         let left_input = node(&mut graph);
         let right_input = node(&mut graph);
-        let output = node(&mut graph);
-        graph.new_edge(operation("f"), ([left_input], [output]));
-        graph.new_edge(operation("f"), ([right_input], [output]));
-        let mut relation = UnionFind::new(graph.hypergraph.nodes.len());
+        let shared_output = node(&mut graph);
+        let left_output = node(&mut graph);
+        let right_output = node(&mut graph);
+        graph.new_edge(operation("f"), ([left_input], [shared_output, left_output]));
+        graph.new_edge(
+            operation("f"),
+            ([right_input], [shared_output, right_output]),
+        );
+        let saturation = saturation_of(&graph);
 
-        class_info(&graph, &mut relation).expect("repeated heads are consistent");
+        assert!(matches!(
+            check_consistency(&graph, &saturation),
+            Err(Error::DefinitionClash { .. })
+        ));
     }
 
     #[test]
     fn consistency_rejects_conflicting_heads() {
         let mut graph = CheckGraph::empty();
-        let left_input = node(&mut graph);
-        let right_input = node(&mut graph);
+        let input = node(&mut graph);
         let output = node(&mut graph);
-        graph.new_edge(operation("f"), ([left_input], [output]));
-        graph.new_edge(operation("g"), ([right_input], [output]));
-        let mut relation = UnionFind::new(graph.hypergraph.nodes.len());
+        graph.new_edge(operation("f"), ([input], [output]));
+        graph.new_edge(operation("g"), ([input], [output]));
+        let saturation = saturation_of(&graph);
 
         assert!(matches!(
-            class_info(&graph, &mut relation),
-            Err(Error::HeadClash { .. })
+            check_consistency(&graph, &saturation),
+            Err(Error::DefinitionClash { .. })
         ));
     }
 
@@ -465,11 +502,10 @@ mod tests {
         let mut graph = OpenHypergraph::<&str, Operation>::empty();
         graph.new_node("left");
         graph.new_node("right");
-        let mut relation = UnionFind::new(2);
-        relation.union(0, 1);
+        let saturation = FiniteFunction::new(VecArray(vec![0, 0]), 1).unwrap();
 
         assert!(matches!(
-            class_info(&graph, &mut relation),
+            check_consistency(&graph, &saturation),
             Err(Error::InconsistentNodeLabels { .. })
         ));
     }
@@ -556,9 +592,9 @@ mod tests {
         graph.sources = vec![source];
         graph.targets = vec![target];
 
-        let (closed, quotient) = frobenius_closure(graph).expect("valid closure");
+        let (phi, quotient) = frobenius_closure(graph).expect("valid closure");
 
-        assert_eq!(closed.sources, closed.targets);
+        assert_eq!(phi.sources, phi.targets);
         assert_eq!(quotient.table.0[source.0], quotient.table.0[target.0]);
     }
 
@@ -594,10 +630,10 @@ mod tests {
         let mut graph = CheckGraph::empty();
         let cyclic = node(&mut graph);
         graph.new_edge(operation("f"), ([cyclic], [cyclic]));
-        let mut relation = UnionFind::new(graph.hypergraph.nodes.len());
+        let saturation = saturation_of(&graph);
 
         assert!(matches!(
-            check_well_founded(&graph, &mut relation),
+            check_well_founded(&graph, &saturation),
             Err(Error::OccursCheck { .. })
         ));
     }
@@ -609,10 +645,10 @@ mod tests {
         let second = node(&mut graph);
         graph.new_edge(operation("f"), ([first], [second]));
         graph.new_edge(operation("g"), ([second], [first]));
-        let mut relation = UnionFind::new(graph.hypergraph.nodes.len());
+        let saturation = saturation_of(&graph);
 
         assert!(matches!(
-            check_well_founded(&graph, &mut relation),
+            check_well_founded(&graph, &saturation),
             Err(Error::OccursCheck { .. })
         ));
     }
@@ -626,9 +662,9 @@ mod tests {
         graph.new_edge(operation("f"), ([first], [second]));
         graph.new_edge(operation("g"), ([second], [first]));
         graph.new_edge(operation("h"), ([second], [downstream]));
-        let mut relation = UnionFind::new(graph.hypergraph.nodes.len());
+        let saturation = saturation_of(&graph);
 
-        let Err(Error::OccursCheck { class }) = check_well_founded(&graph, &mut relation) else {
+        let Err(Error::OccursCheck { class }) = check_well_founded(&graph, &saturation) else {
             panic!("expected an occurs-check failure");
         };
         assert!(class == first.0 || class == second.0);
@@ -642,10 +678,10 @@ mod tests {
         graph.new_edge(operation("f"), ([input], [boundary]));
         graph.sources = vec![boundary];
         graph.targets = vec![boundary];
-        let mut relation = wire_saturation(&graph).expect("valid saturation");
+        let saturation = saturation_of(&graph);
 
         assert!(matches!(
-            validate(&graph, &mut relation),
+            validate(&graph, &saturation),
             Err(Error::HeadedBoundary { .. })
         ));
     }
@@ -657,10 +693,10 @@ mod tests {
         let target = node(&mut graph);
         graph.sources = vec![source];
         graph.targets = vec![target];
-        let mut relation = wire_saturation(&graph).expect("valid saturation");
+        let saturation = saturation_of(&graph);
 
         assert!(matches!(
-            validate(&graph, &mut relation),
+            validate(&graph, &saturation),
             Err(Error::BoundaryMismatch { .. })
         ));
     }
@@ -671,10 +707,10 @@ mod tests {
         let boundary = node(&mut graph);
         graph.sources = vec![boundary, boundary];
         graph.targets = vec![boundary, boundary];
-        let mut relation = wire_saturation(&graph).expect("valid saturation");
+        let saturation = saturation_of(&graph);
 
         assert!(matches!(
-            validate(&graph, &mut relation),
+            validate(&graph, &saturation),
             Err(Error::BoundaryCollision {
                 first: 0,
                 second: 1
@@ -683,11 +719,11 @@ mod tests {
     }
 
     #[test]
-    fn induced_mapping_identifies_original_nodes_in_the_same_class() {
+    fn quotient_mapping_compacts_union_find_classes() {
         let mut relation = UnionFind::new(4);
         relation.union(0, 2);
 
-        let mapping = induced_mapping(&mut relation, &[0, 1, 2, 3]);
+        let mapping = quotient_mapping(&mut relation, 4);
 
         assert_eq!(mapping.table.0, vec![0, 1, 0, 2]);
         assert_eq!(mapping.target, 3);

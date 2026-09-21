@@ -34,7 +34,7 @@ fn typed_wire_identity_checks() -> Result<(), Box<dyn std::error::Error>> {
         result.is_ok(),
         "typed-wire identity should check: {result:?}"
     );
-    assert!(result.unwrap().is_injective());
+    assert!(result.unwrap().proof_classes().is_injective());
 
     Ok(())
 }
@@ -63,13 +63,13 @@ fn self_typed_generator_checks() -> Result<(), Box<dyn std::error::Error>> {
     let proof = arrows.get(&"wn-self".parse()?).unwrap();
     let mut definition = proof.definition.clone().unwrap();
 
-    let mapping = check(
+    let result = check(
         proof_theory,
         proof.type_maps.0.clone(),
         proof.type_maps.1.clone(),
         &mut definition,
     )?;
-    assert!(mapping.is_injective());
+    assert!(result.proof_classes().is_injective());
 
     Ok(())
 }

@@ -1,8 +1,18 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
+use hexpr::Operation;
 use metacat::check::check;
+use metacat::syntax::SyntaxGraph;
 use metacat::theory::{Theory, TheoryId, TheorySet};
+use open_hypergraphs_dot::{Options, svg::to_svg_with};
+use std::io::{self, Write};
 use std::path::PathBuf;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum Orientation {
+    Lr,
+    Tb,
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "metacat", version, about = "A categorical theorem prover")]
@@ -27,6 +37,32 @@ enum Command {
         #[arg(required = true)]
         paths: Vec<PathBuf>,
     },
+
+    /// Inspect a definition as an open hypergraph.
+    Arrow {
+        #[command(subcommand)]
+        format: ArrowFormat,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ArrowFormat {
+    /// Render a definition as SVG on standard output.
+    Svg {
+        /// Theory containing the definition.
+        theory_name: String,
+
+        /// Name of the definition to render.
+        name: String,
+
+        /// Theory files to load together.
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+
+        /// Direction in which the rendered graph flows.
+        #[arg(short, long, value_enum, default_value_t = Orientation::Lr)]
+        orientation: Orientation,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -37,6 +73,7 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Check { theory, paths } => check_files(theory, paths),
+        Command::Arrow { format } => arrow(format),
     }
 }
 
@@ -83,7 +120,7 @@ fn check_theory(theory_id: &TheoryId, theory: &Theory) -> usize {
         let (source, target) = declaration.type_maps.clone();
 
         match check(theory, source, target, &mut definition) {
-            Ok(_mapping) => println!(
+            Ok(_result) => println!(
                 "{} {} {} : {} -> {}",
                 "[✓]".green(),
                 theory_id,
@@ -109,6 +146,74 @@ fn check_theory(theory_id: &TheoryId, theory: &Theory) -> usize {
     failures
 }
 
+fn arrow(format: ArrowFormat) -> anyhow::Result<()> {
+    match format {
+        ArrowFormat::Svg {
+            theory_name,
+            name,
+            paths,
+            orientation,
+        } => render_svg(theory_name, name, paths, orientation),
+    }
+}
+
+fn render_svg(
+    theory_name: String,
+    name: String,
+    paths: Vec<PathBuf>,
+    orientation: Orientation,
+) -> anyhow::Result<()> {
+    let theories = TheorySet::from_files(paths)?;
+    let theory_id = TheoryId(theory_name.parse()?);
+    let theory = theories
+        .theories
+        .get(&theory_id)
+        .ok_or_else(|| anyhow::anyhow!("theory '{theory_id}' not found"))?;
+    let Theory::Theory { arrows, .. } = theory else {
+        anyhow::bail!("theory '{theory_id}' is builtin and has no definitions");
+    };
+
+    let operation: Operation = name.parse()?;
+    let declaration = arrows
+        .get(&operation)
+        .ok_or_else(|| anyhow::anyhow!("definition '{name}' not found in theory '{theory_id}'"))?;
+    let mut term = declaration.definition.clone().ok_or_else(|| {
+        anyhow::anyhow!("arrow '{name}' in theory '{theory_id}' has no definition")
+    })?;
+    term.quotient()
+        .map_err(|quotient| anyhow::anyhow!("unable to quotient definition: {quotient:?}"))?;
+
+    let (source, target) = declaration.type_maps.clone();
+    let labels = match check(theory, source, target, &mut term) {
+        Ok(result) => {
+            let syntax = SyntaxGraph::from_saturation(&result.phi, &result.saturation)?;
+            let syntax_labels = syntax.labels()?;
+            result
+                .proof_classes()
+                .table
+                .0
+                .iter()
+                .map(|&class| syntax_labels[class].clone())
+                .collect()
+        }
+        Err(error) => {
+            eprintln!("warning: check failed; rendering without wire labels: {error}");
+            vec![String::new(); term.hypergraph.nodes.len()]
+        }
+    };
+    let labeled = term
+        .with_nodes(|_| labels)
+        .ok_or_else(|| anyhow::anyhow!("wire-label count did not match the definition"))?;
+
+    let mut options = Options::default().display();
+    options.orientation = match orientation {
+        Orientation::Lr => open_hypergraphs_dot::Orientation::LR,
+        Orientation::Tb => open_hypergraphs_dot::Orientation::TB,
+    };
+    io::stdout().write_all(&to_svg_with(&labeled, &options)?)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,12 +237,50 @@ mod tests {
         ])
         .expect("valid check command");
 
-        let Command::Check { theory, paths } = cli.command;
+        let Command::Check { theory, paths } = cli.command else {
+            panic!("expected check command");
+        };
         assert!(cli.color);
         assert_eq!(theory.as_deref(), Some("proof"));
         assert_eq!(
             paths,
             [PathBuf::from("syntax.hex"), PathBuf::from("proof.hex")]
         );
+    }
+
+    #[test]
+    fn parses_arrow_svg_command() {
+        let cli = Cli::try_parse_from([
+            "metacat",
+            "arrow",
+            "svg",
+            "proof",
+            "example",
+            "syntax.hex",
+            "proof.hex",
+            "--orientation",
+            "tb",
+        ])
+        .expect("valid arrow svg command");
+
+        let Command::Arrow {
+            format:
+                ArrowFormat::Svg {
+                    theory_name,
+                    name,
+                    paths,
+                    orientation,
+                },
+        } = cli.command
+        else {
+            panic!("expected arrow svg command");
+        };
+        assert_eq!(theory_name, "proof");
+        assert_eq!(name, "example");
+        assert_eq!(
+            paths,
+            [PathBuf::from("syntax.hex"), PathBuf::from("proof.hex")]
+        );
+        assert_eq!(orientation, Orientation::Tb);
     }
 }
