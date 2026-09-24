@@ -1,3 +1,4 @@
+use crate::path::PathFunctor;
 use crate::saturation::{SaturationError, wire_saturation};
 use crate::theory::{Term, Theory};
 use crate::union_find::UnionFind;
@@ -5,11 +6,10 @@ use hexpr::Operation;
 use open_hypergraphs::array::vec::VecArray;
 use open_hypergraphs::category::{Arrow, Spider};
 use open_hypergraphs::lax::OpenHypergraph;
-use open_hypergraphs::lax::functor::{self, Functor};
-use open_hypergraphs::strict::vec::{FiniteFunction, IndexedCoproduct};
+use open_hypergraphs::strict::vec::FiniteFunction;
 use thiserror::Error;
 
-pub type CheckGraph = OpenHypergraph<(), Operation>;
+pub use crate::path::CheckGraph;
 
 /// The graph and node maps computed for `Φ(path(p; s, t))` while checking a
 /// derivation.
@@ -74,10 +74,12 @@ pub fn check(
 ) -> Result<CheckResult, Error> {
     arrow.quotient().map_err(Error::InvalidQuotient)?;
     validate_proof_shapes(theory, arrow)?;
-    let (mapped_proof, witness) =
-        functor::map_arrow_witness(&PathFunctor(theory), arrow).ok_or(Error::InvalidTypeMaps)?;
-    let (path, path_quotient, mapped_proof_offset) = compose_path(source, target, mapped_proof)?;
-    let mut arrow_nodes = transport_witness(&witness, mapped_proof_offset, &path_quotient)?;
+    let mapped = PathFunctor::new(theory)
+        .map_arrow_with_metavariables(arrow)
+        .ok_or(Error::InvalidTypeMaps)?;
+    let (path, path_quotient, mapped_proof_offset) = compose_path(source, target, mapped.graph)?;
+    let mut arrow_nodes =
+        transport_mapping(&mapped.proof_nodes, mapped_proof_offset, &path_quotient)?;
 
     let (phi, closure_quotient) = frobenius_closure(path)?;
     transport_nodes(&mut arrow_nodes, &closure_quotient)?;
@@ -99,7 +101,10 @@ pub fn check(
 pub fn map_proof(theory: &Theory, mut arrow: Term) -> Result<CheckGraph, Error> {
     arrow.quotient().map_err(Error::InvalidQuotient)?;
     validate_proof_shapes(theory, &arrow)?;
-    functor::try_define_map_arrow(&PathFunctor(theory), &arrow).ok_or(Error::InvalidTypeMaps)
+    PathFunctor::new(theory)
+        .map_arrow_with_metavariables(&arrow)
+        .map(|image| image.graph)
+        .ok_or(Error::InvalidTypeMaps)
 }
 
 /// Defensive preflight before applying `Path`: check each proof edge's arity
@@ -174,33 +179,20 @@ fn frobenius_closure(mut path: CheckGraph) -> Result<(CheckGraph, FiniteFunction
     Ok((path, quotient))
 }
 
-/// Locate each proof-node witness in the composed path, then transport it
+/// Shift a mapped-proof node map into `path(p; s, t)`, then transport it
 /// through the path's structural quotient.
-fn transport_witness(
-    witness: &IndexedCoproduct<FiniteFunction>,
+fn transport_mapping(
+    mapping: &FiniteFunction,
     mapped_proof_offset: usize,
     quotient: &FiniteFunction,
 ) -> Result<Vec<usize>, Error> {
-    let mut cursor = 0;
-    let mut nodes = Vec::with_capacity(witness.sources.table.0.len());
-
-    for &segment_len in &witness.sources.table.0 {
-        if segment_len != 1 {
-            return Err(Error::InvalidTypeMaps);
-        }
-        let Some(&mapped_node) = witness.values.table.0.get(cursor) else {
-            return Err(Error::InvalidTypeMaps);
-        };
+    let mut nodes = Vec::with_capacity(mapping.table.0.len());
+    for &mapped_node in &mapping.table.0 {
         let composed_node = mapped_proof_offset + mapped_node;
         let Some(&quotiented_node) = quotient.table.0.get(composed_node) else {
             return Err(Error::InvalidTypeMaps);
         };
         nodes.push(quotiented_node);
-        cursor += segment_len;
-    }
-
-    if cursor != witness.values.table.0.len() {
-        return Err(Error::InvalidTypeMaps);
     }
     Ok(nodes)
 }
@@ -234,38 +226,6 @@ fn quotient_mapping(relation: &mut UnionFind, node_count: usize) -> FiniteFuncti
 
     FiniteFunction::new(VecArray(table), representatives.len())
         .expect("induced wire saturation should be a finite function")
-}
-
-/// The identity-on-objects symmetric monoidal functor `Path`.
-#[derive(Clone)]
-struct PathFunctor<'a>(&'a Theory);
-
-impl Functor<(), Operation, (), Operation> for PathFunctor<'_> {
-    /// `Path` is identity-on-objects in the single-sorted checker.
-    fn map_object(&self, _: &()) -> impl ExactSizeIterator<Item = ()> {
-        std::iter::once(())
-    }
-
-    /// Map a proof generator `g` with type span `(s, t)` to `s† ; t`.
-    fn map_operation(&self, operation: &Operation, source: &[()], target: &[()]) -> CheckGraph {
-        let arrow = self
-            .0
-            .get_arrow(operation)
-            .expect("missing arrow in theory");
-        let (s, t) = &arrow.type_maps;
-
-        assert_eq!(source.len(), s.targets.len());
-        assert_eq!(target.len(), t.targets.len());
-
-        s.dagger()
-            .compose(t)
-            .expect("type-map boundaries should compose")
-    }
-
-    /// Extend the generator mapping over a complete proof term.
-    fn map_arrow(&self, arrow: &Term) -> CheckGraph {
-        functor::try_define_map_arrow(self, arrow).expect("arrow should be quotiented")
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -435,6 +395,7 @@ mod tests {
     use super::*;
     use crate::theory::{TheoryId, TheorySet};
     use open_hypergraphs::lax::NodeId;
+    use open_hypergraphs::lax::functor::Functor;
 
     fn operation(name: &str) -> Operation {
         name.parse().expect("valid operation")
@@ -547,7 +508,7 @@ mod tests {
             .unwrap();
         let generator = proof.get_arrow(&operation("wn")).unwrap();
 
-        let mapped = PathFunctor(proof).map_operation(&operation("wn"), &[()], &[()]);
+        let mapped = PathFunctor::new(proof).map_operation(&operation("wn"), &[()], &[()]);
         let expected = generator
             .type_maps
             .0
