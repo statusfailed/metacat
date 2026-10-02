@@ -75,7 +75,7 @@ pub mod load;
 pub mod model;
 pub mod nat;
 
-pub use ast::{MergeRawError, RawTheorySet};
+pub use ast::{MergeRawError, RawAnnotation, RawTheorySet};
 pub use graph::{
     GraphError, SyntaxDependencyGraph, builtin_nat_theory_id, syntax_dependency_graph,
     topological_order, transitive_dependency_subset,

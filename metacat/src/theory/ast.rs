@@ -2,6 +2,7 @@
 //!
 //! These types stay close to the parsed source:
 //! - theory and arrow names are still plain [`hexpr::Operation`]s;
+//! - declaration annotations are retained as uninterpreted hexpr pairs;
 //! - source/target maps and definitions are still plain [`hexpr::Hexpr`]s;
 //! - no cross-theory references have been resolved yet.
 //!
@@ -25,9 +26,13 @@ pub struct RawTheory {
     pub arrows: BTreeMap<Operation, RawTheoryArrow>,
 }
 
+/// An uninterpreted declaration annotation written as `(kind value)`.
+pub type RawAnnotation = (Hexpr, Hexpr);
+
 #[derive(Clone, Debug)]
 pub struct RawTheoryArrow {
     pub name: Operation,
+    pub annotations: Vec<RawAnnotation>,
     pub type_maps: (Hexpr, Hexpr),
     pub definition: Option<Hexpr>,
 }
@@ -333,36 +338,19 @@ impl Extension {
             return None;
         };
 
-        match &parts[..] {
-            [
-                kind,
-                Hexpr::Operation(theory),
-                Hexpr::Operation(name),
-                colon,
-                source,
-                arrow,
-                target,
-                eq,
-                def,
-            ] if is_operation(kind, "def")
-                && is_operation(colon, ":")
-                && is_operation(arrow, "->")
-                && is_operation(eq, "=") =>
-            {
-                let raw_arrow = RawTheoryArrow {
-                    name: name.clone(),
-                    type_maps: (source.clone(), target.clone()),
-                    definition: Some(def.clone()),
-                };
-                let mut arrows = BTreeMap::new();
-                arrows.insert(name.clone(), raw_arrow);
-                Some(Self {
-                    theory: theory.clone(),
-                    arrows,
-                })
-            }
-            _ => None,
+        if !is_operation(parts.first()?, "def") {
+            return None;
         }
+        let Hexpr::Operation(theory) = parts.get(1)? else {
+            return None;
+        };
+        let raw_arrow = RawTheoryArrow::try_from_parts(&parts, 2)?;
+        let mut arrows = BTreeMap::new();
+        arrows.insert(raw_arrow.name.clone(), raw_arrow);
+        Some(Self {
+            theory: theory.clone(),
+            arrows,
+        })
     }
 }
 
@@ -387,42 +375,65 @@ impl RawTheoryArrow {
         let Hexpr::Composition(parts) = hexpr else {
             return None;
         };
-
-        match &parts[..] {
-            [kind, Hexpr::Operation(name), colon, source, arrow, target]
-                if is_operation(kind, "arr")
-                    && is_operation(colon, ":")
-                    && is_operation(arrow, "->") =>
-            {
-                Some(Self {
-                    name: name.clone(),
-                    type_maps: (source.clone(), target.clone()),
-                    definition: None,
-                })
-            }
-            [
-                kind,
-                Hexpr::Operation(name),
-                colon,
-                source,
-                arrow,
-                target,
-                eq,
-                def,
-            ] if is_operation(kind, "def")
-                && is_operation(colon, ":")
-                && is_operation(arrow, "->")
-                && is_operation(eq, "=") =>
-            {
-                Some(Self {
-                    name: name.clone(),
-                    type_maps: (source.clone(), target.clone()),
-                    definition: Some(def.clone()),
-                })
-            }
-            _ => None,
-        }
+        Self::try_from_parts(&parts, 1)
     }
+
+    /// Parse an arrow declaration, using `name_index` to locate its name.
+    /// Top-level definitions have an extra theory name before the arrow name.
+    fn try_from_parts(parts: &[Hexpr], name_index: usize) -> Option<Self> {
+        let kind = parts.first()?;
+        let Hexpr::Operation(name) = parts.get(name_index)? else {
+            return None;
+        };
+
+        let (annotations_end, source, target, definition) = if is_operation(kind, "arr") {
+            let annotations_end = parts.len().checked_sub(4)?;
+            let [colon, source, arrow, target] = &parts[annotations_end..] else {
+                return None;
+            };
+            if !is_operation(colon, ":") || !is_operation(arrow, "->") {
+                return None;
+            }
+            (annotations_end, source, target, None)
+        } else if is_operation(kind, "def") {
+            let annotations_end = parts.len().checked_sub(6)?;
+            let [colon, source, arrow, target, eq, definition] = &parts[annotations_end..] else {
+                return None;
+            };
+            if !is_operation(colon, ":") || !is_operation(arrow, "->") || !is_operation(eq, "=") {
+                return None;
+            }
+            (annotations_end, source, target, Some(definition.clone()))
+        } else {
+            return None;
+        };
+
+        let annotations_start = name_index + 1;
+        if annotations_end < annotations_start {
+            return None;
+        }
+        let annotations = parts[annotations_start..annotations_end]
+            .iter()
+            .map(parse_annotation)
+            .collect::<Option<Vec<_>>>()?;
+
+        Some(Self {
+            name: name.clone(),
+            annotations,
+            type_maps: (source.clone(), target.clone()),
+            definition,
+        })
+    }
+}
+
+fn parse_annotation(hexpr: &Hexpr) -> Option<RawAnnotation> {
+    let Hexpr::Composition(parts) = hexpr else {
+        return None;
+    };
+    let [kind, value] = &parts[..] else {
+        return None;
+    };
+    Some((kind.clone(), value.clone()))
 }
 
 fn theory_to_hexpr_text(theory: &RawTheory) -> String {
@@ -447,12 +458,16 @@ fn extension_to_hexpr_text(extension: &Extension) -> String {
 
 fn arrow_to_hexpr_text(arrow: &RawTheoryArrow) -> String {
     let (source, target) = &arrow.type_maps;
+    let annotations = annotations_to_hexpr_text(&arrow.annotations);
     match &arrow.definition {
-        None => format!("(arr {} : {} -> {})", arrow.name, source, target),
+        None => format!(
+            "(arr {}{} : {} -> {})",
+            arrow.name, annotations, source, target
+        ),
         Some(definition) => {
             format!(
-                "(def {} : {} -> {} = {})",
-                arrow.name, source, target, definition
+                "(def {}{} : {} -> {} = {})",
+                arrow.name, annotations, source, target, definition
             )
         }
     }
@@ -460,14 +475,23 @@ fn arrow_to_hexpr_text(arrow: &RawTheoryArrow) -> String {
 
 fn top_level_def_to_hexpr_text(theory: &Operation, arrow: &RawTheoryArrow) -> String {
     let (source, target) = &arrow.type_maps;
+    let annotations = annotations_to_hexpr_text(&arrow.annotations);
     let definition = arrow
         .definition
         .as_ref()
         .expect("top-level extension arrows must be bona-fide definitions");
     format!(
-        "(def {} {} : {} -> {} = {})",
-        theory, arrow.name, source, target, definition
+        "(def {} {}{} : {} -> {} = {})",
+        theory, arrow.name, annotations, source, target, definition
     )
+}
+
+fn annotations_to_hexpr_text(annotations: &[RawAnnotation]) -> String {
+    annotations
+        .iter()
+        .map(|(kind, value)| format!(" ({kind} {value})"))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn is_operation(hexpr: &Hexpr, literal: &str) -> bool {
@@ -499,6 +523,57 @@ mod tests {
         assert!(raw.theories.contains_key(&"fol.syntax".parse()?));
         assert!(raw.theories.contains_key(&"fol.proof".parse()?));
         Ok(())
+    }
+
+    #[test]
+    fn declaration_annotations_parse_and_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
+        let raw = RawTheorySet::from_text(
+            r#"
+            (theory annotated nat {
+              (arr plain : 1 -> 1)
+              (arr constrained (dv (del sel)) (metadata :) : 1 -> 1)
+              (def derived (dv :) : 1 -> 1 = constrained)
+            })
+
+            (def annotated extended (dv :) : 1 -> 1 = plain)
+            "#,
+        )?;
+
+        let theory = raw.theories.get(&"annotated".parse()?).unwrap();
+        assert!(theory.arrows[&"plain".parse()?].annotations.is_empty());
+
+        let constrained = &theory.arrows[&"constrained".parse()?];
+        assert_eq!(constrained.annotations.len(), 2);
+        assert_eq!(constrained.annotations[0].0.to_string(), "dv");
+        assert_eq!(constrained.annotations[0].1.to_string(), "(del sel)");
+        assert_eq!(constrained.annotations[1].0.to_string(), "metadata");
+        assert_eq!(constrained.annotations[1].1.to_string(), ":");
+
+        let derived = &theory.arrows[&"derived".parse()?];
+        assert_eq!(derived.annotations[0].1.to_string(), ":");
+
+        let extended = &raw.extensions[0].arrows[&"extended".parse()?];
+        assert_eq!(extended.annotations[0].0.to_string(), "dv");
+        assert_eq!(extended.annotations[0].1.to_string(), ":");
+
+        let dumped = raw.to_hexpr_text();
+        let reparsed = RawTheorySet::from_text(&dumped)?;
+        assert_eq!(dumped, reparsed.to_hexpr_text());
+        Ok(())
+    }
+
+    #[test]
+    fn declaration_annotations_must_be_pairs() {
+        let error = RawTheorySet::from_text(
+            r#"
+            (theory invalid nat {
+              (arr bad (dv) : 1 -> 1)
+            })
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ParseRawError::InvalidTheoryDeclaration(_)));
     }
 
     #[test]
