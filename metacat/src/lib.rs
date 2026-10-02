@@ -1,4 +1,5 @@
 pub mod check;
+pub mod finrel;
 pub mod path;
 pub mod syntax;
 pub mod theory;
