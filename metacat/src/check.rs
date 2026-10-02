@@ -1,4 +1,4 @@
-use crate::path::PathFunctor;
+use crate::path::{GeneratorMetavariables, PathFunctor};
 use crate::saturation::{SaturationError, wire_saturation};
 use crate::theory::{Term, Theory};
 use crate::union_find::UnionFind;
@@ -21,6 +21,8 @@ pub struct CheckResult {
     pub saturation: FiniteFunction,
     /// The witness from proof nodes to vertices of `Φ(path(p; s, t))`.
     pub proof_nodes: FiniteFunction,
+    /// Each generator occurrence's map `M_g → V(Φ(path(p; s, t)))`.
+    pub generator_metavariables: Vec<GeneratorMetavariables>,
 }
 
 impl CheckResult {
@@ -83,6 +85,13 @@ pub fn check(
 
     let (phi, closure_quotient) = frobenius_closure(path)?;
     transport_nodes(&mut arrow_nodes, &closure_quotient)?;
+    let mut generator_metavariables = mapped.generator_metavariables;
+    for generator in &mut generator_metavariables {
+        let mut nodes = transport_mapping(&generator.mapping, mapped_proof_offset, &path_quotient)?;
+        transport_nodes(&mut nodes, &closure_quotient)?;
+        generator.mapping = FiniteFunction::new(VecArray(nodes), phi.hypergraph.nodes.len())
+            .expect("transported metavariables should belong to Φ(path(p; s, t))");
+    }
 
     let mut relation = wire_saturation(&phi)?;
     let saturation = quotient_mapping(&mut relation, phi.hypergraph.nodes.len());
@@ -94,6 +103,7 @@ pub fn check(
         phi,
         saturation,
         proof_nodes,
+        generator_metavariables,
     })
 }
 

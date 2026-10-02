@@ -1,4 +1,5 @@
 pub mod check;
+pub mod dv;
 pub mod finrel;
 pub mod path;
 pub mod syntax;

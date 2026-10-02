@@ -1,9 +1,4 @@
-//! Syntax for finite relations.
-//!
-//! [`FinRelSignature`] presents finite relations using the four generators of
-//! a bicommutative bimonoid. This module currently provides syntax only;
-//! interpreting terms as relations or Boolean matrices is left to a later
-//! layer.
+//! The single-sorted syntax used to specify finite relations.
 
 use hexpr::{Hexpr, Operation, Signature};
 use open_hypergraphs::lax::OpenHypergraph;

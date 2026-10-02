@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use colored::Colorize;
 use hexpr::Operation;
 use metacat::check::check;
+use metacat::dv::dv_check;
 use metacat::syntax::SyntaxGraph;
 use metacat::theory::{Theory, TheoryId, TheorySet};
 use open_hypergraphs_dot::{Options, svg::to_svg_with};
@@ -119,7 +120,13 @@ fn check_theory(theory_id: &TheoryId, theory: &Theory) -> usize {
             .expect("definition was filtered above");
         let (source, target) = declaration.type_maps.clone();
 
-        match check(theory, source, target, &mut definition) {
+        match dv_check(
+            theory,
+            source,
+            target,
+            declaration.ar.as_ref(),
+            &mut definition,
+        ) {
             Ok(_result) => println!(
                 "{} {} {} : {} -> {}",
                 "[✓]".green(),

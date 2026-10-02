@@ -1,0 +1,74 @@
+################################################################################
+# a port of (some of) set.mm to metacat
+################################################################################
+
+(theory fol.syntax nat {
+  # Judgements
+  (arr wff : 1 -> 1) # well-formedness
+  (arr |-  : 1 -> 1) # provability
+
+  # Connectives
+  (arr -.  : 1 -> 1) # the "not" relation
+  (arr =>  : 2 -> 1) # implication
+  (arr =   : 2 -> 1) # equality
+
+  # quantifiers
+  (arr forall : 2 -> 1)
+  (arr exists : 2 -> 1)
+})
+
+(theory fol.proof fol.syntax {
+  ##############################################
+  # Syntactic axioms
+  ##############################################
+
+  # The negation of a wff is a wff
+  (arr wn : wff -> (-. wff))
+
+  # implication of two wffs is a wff
+  (arr wi : {wff wff} -> (=> wff))
+
+  ##############################################
+  # The axioms of propositional calculus
+  ##############################################
+
+  # Modus ponens:
+  #   h0 : |- φ
+  #   h1 : |- φ → ψ
+  # ----------------
+  #   r0 : |- ψ
+  (arr ax-mp : {[ph ps.] # two metavars
+    ([.ph] |-)            # |- φ
+    ([.ph ps] => |-)      # |- (φ → ψ)
+  } -> ([ph ps . ps] |-)) # |- ψ
+
+  # ax-1    ⊢ (𝜑 => (𝜓 => 𝜑))
+  (arr ax-1 : {wff wff} -> ([x y . x y x] {[x] =>} => |-))
+
+  # ⊢ ((𝜑 → (𝜓 → 𝜒)) → ((𝜑 → 𝜓) → (𝜑 → 𝜒)))
+  (arr ax-2 : {wff wff wff} -> {[ph ps ch.]
+    # ((𝜑 → (𝜓 → 𝜒))
+    ({[.ph] ([. ps ch] =>)} => [lhs.])
+
+    # ((𝜑 → 𝜓) → (𝜑 → 𝜒)))
+    ({
+      ([. ph ps] =>)
+      ([. ph ch] =>)
+    } => [rhs.])
+
+    ([.lhs rhs] => |-)
+  })
+
+  # ax-5: ⊢ (φ => ∀x φ), with x disjoint from φ
+  (arr ax-5 (dv (del sel)) : ([x ph . ph] wff) -> ([x ph.] { [.ph] ([.x ph] forall) } => |-))
+
+  ################################################################################
+  # proofs
+  ################################################################################
+
+  # ¬ (φ → ψ) is well-formed
+  (def win : { wff wff } -> (=> -. wff) = (wi wn))
+
+})
+
+(def fol.proof bad-ax-5 : ([x ph . ph] wff) -> ([x ph.] { [.ph] ([.x ph] forall) } => |-) = ax-5)

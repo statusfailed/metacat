@@ -20,12 +20,12 @@ pub struct PathImage {
     pub generator_metavariables: Vec<GeneratorMetavariables>,
 }
 
-/// The occurrence-specific map `M_g → V(Path(p))` for a proof generator.
+/// A proof generator occurrence's metavariable map into the accompanying graph.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GeneratorMetavariables {
     /// The occurrence of `g` in the original proof hypergraph.
     pub occurrence: EdgeId,
-    /// The map from the occurrence's metavariables to vertices of `Path(p)`.
+    /// The map into `PathImage::graph` or, after transport, `CheckResult::phi`.
     pub mapping: FiniteFunction,
 }
 
