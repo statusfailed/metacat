@@ -10,6 +10,7 @@
 //! declarations have been registered.
 
 use super::ast::RawTheoryArrow;
+use crate::finrel::FinRelTerm;
 use hexpr::{Hexpr, Operation, Signature};
 use open_hypergraphs::lax::OpenHypergraph;
 use std::collections::BTreeMap;
@@ -45,6 +46,8 @@ pub struct TheoryArrow {
     pub raw: RawTheoryArrow,
     pub name: Operation,
     pub type_maps: (Term, Term),
+    /// The interpreted admissible-reachability annotation, when present.
+    pub ar: Option<FinRelTerm>,
     pub definition: Option<Term>,
 }
 

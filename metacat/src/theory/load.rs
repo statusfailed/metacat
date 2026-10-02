@@ -9,10 +9,11 @@
 //! The result is a resolved [`super::model::TheorySet`] whose theories are ready for
 //! downstream checking and tooling.
 
-use super::ast::{ExtensionsError, ParseRawError, RawTheorySet};
+use super::ast::{ExtensionsError, ParseRawError, RawTheoryArrow, RawTheorySet};
 use super::graph::{GraphError, syntax_dependency_graph, topological_order};
 use super::model::{SignatureError, Term, Theory, TheoryArrow, TheoryId, TheorySet};
 use super::nat::{NAT_THEORY_NAME, NatKey, NatObj};
+use crate::finrel::{FinRelSignature, FinRelSignatureError, FinRelTerm};
 use hexpr::{Hexpr, Operation, Signature, try_interpret};
 use open_hypergraphs::category::Arrow;
 use open_hypergraphs::lax::OpenHypergraph;
@@ -47,6 +48,17 @@ pub enum LoadError {
         arrow: Operation,
         #[source]
         source: hexpr::interpret::Error<SignatureError>,
+    },
+    #[error("Arrow {arrow} in theory {theory} has more than one `dv` annotation")]
+    DuplicateDvAnnotation { theory: TheoryId, arrow: Operation },
+    #[error(
+        "Failed to interpret admissible reachability for theory {theory}, arrow {arrow}: {source}"
+    )]
+    AdmissibleReachabilityInterpret {
+        theory: TheoryId,
+        arrow: Operation,
+        #[source]
+        source: hexpr::interpret::Error<FinRelSignatureError>,
     },
     #[error("Arrow {arrow} in theory {theory}: source and target maps must have same domain")]
     InvalidTypeMapDomain { theory: TheoryId, arrow: Operation },
@@ -121,6 +133,7 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
 
         let mut arrows = BTreeMap::new();
         for raw_arrow in raw_theory.arrows.values() {
+            let ar = interpret_admissible_reachability(&theory_id, raw_arrow)?;
             let type_maps = interpret_type_maps(
                 &theory_id,
                 &raw_arrow.name,
@@ -134,6 +147,7 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
                     raw: raw_arrow.clone(),
                     name: raw_arrow.name.clone(),
                     type_maps,
+                    ar,
                     definition: None,
                 },
             );
@@ -166,6 +180,37 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
     }
 
     Ok(TheorySet { theories })
+}
+
+fn interpret_admissible_reachability(
+    theory: &TheoryId,
+    arrow: &RawTheoryArrow,
+) -> Result<Option<FinRelTerm>, LoadError> {
+    let mut annotations = arrow
+        .annotations
+        .iter()
+        .filter_map(|(kind, value)| match kind {
+            Hexpr::Operation(operation) if operation.as_str() == "dv" => Some(value),
+            _ => None,
+        });
+    let Some(annotation) = annotations.next() else {
+        return Ok(None);
+    };
+    if annotations.next().is_some() {
+        return Err(LoadError::DuplicateDvAnnotation {
+            theory: theory.clone(),
+            arrow: arrow.name.clone(),
+        });
+    }
+
+    try_interpret(&FinRelSignature, annotation)
+        .map(forget_labels)
+        .map(Some)
+        .map_err(|source| LoadError::AdmissibleReachabilityInterpret {
+            theory: theory.clone(),
+            arrow: arrow.name.clone(),
+            source,
+        })
 }
 
 fn interpret_type_maps(
@@ -314,6 +359,7 @@ impl Theory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::finrel::FinRelOp;
 
     #[test]
     fn loads_multiple_theories() -> Result<(), Box<dyn std::error::Error>> {
@@ -351,6 +397,65 @@ mod tests {
         assert!(
             matches!(proof, Theory::Theory { arrows, .. } if arrows.values().any(|arrow| arrow.definition.is_some()))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn interprets_dv_annotations() -> Result<(), Box<dyn std::error::Error>> {
+        let file = TheorySet::from_text(
+            r#"
+            (theory annotated nat {
+              (arr constrained (metadata :) (dv (del sel)) : 1 -> 1)
+              (arr plain : 1 -> 1)
+            })
+            "#,
+        )?;
+
+        let theory_id = TheoryId("annotated".parse()?);
+        let Theory::Theory { arrows, .. } = file.theories.get(&theory_id).unwrap() else {
+            panic!("expected user theory");
+        };
+        let constrained = &arrows[&"constrained".parse()?];
+        let ar = constrained.ar.as_ref().unwrap();
+
+        assert_eq!(ar.sources.len(), 1);
+        assert_eq!(ar.targets.len(), 1);
+        assert_eq!(ar.hypergraph.edges, vec![FinRelOp::Del, FinRelOp::Sel]);
+        assert_eq!(constrained.raw.annotations.len(), 2);
+        assert!(arrows[&"plain".parse()?].ar.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_invalid_dv_annotations() -> Result<(), Box<dyn std::error::Error>> {
+        let error = TheorySet::from_text(
+            r#"
+            (theory invalid nat {
+              (arr bad (dv unknown) : 1 -> 1)
+            })
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            LoadError::AdmissibleReachabilityInterpret { .. }
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_duplicate_dv_annotations() -> Result<(), Box<dyn std::error::Error>> {
+        let error = TheorySet::from_text(
+            r#"
+            (theory invalid nat {
+              (arr bad (dv del) (dv sel) : 1 -> 1)
+            })
+            "#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, LoadError::DuplicateDvAnnotation { .. }));
         Ok(())
     }
 

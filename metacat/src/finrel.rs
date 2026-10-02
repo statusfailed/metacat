@@ -6,6 +6,10 @@
 //! layer.
 
 use hexpr::{Hexpr, Operation, Signature};
+use open_hypergraphs::lax::OpenHypergraph;
+
+/// A syntactic finite-relation term interpreted as an open hypergraph.
+pub type FinRelTerm = OpenHypergraph<(), FinRelOp>;
 
 /// A generator in the finite-relation signature.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
