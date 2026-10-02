@@ -1,0 +1,2039 @@
+# Foundational logic/ZFC axioms and the proof of sp from Metamath's set.mm.
+# Source: local set.mm (CC0, https://github.com/metamath/set.mm).
+# SHA-256: e3a11bb9cc3d7d85ec3eed51efab405e217e622b212651b403f553b54d74fdd3
+# Check every proof: cargo run -- check examples/set.hex
+#
+# Scope: the 29 foundational ax-* declarations through ax-ac2, including
+# redundant variants and weaker choice axioms; no ax-groth or mathbox axioms.
+# Theorems are the dependency chain of sp, with the original proof DAGs.
+# Definitions are df-bi, df-or, df-an and df-ex. Other notation appearing only
+# in ax-cc/ax-dc is declared syntactically; its definitions are not ported here.
+#
+# wff/setvar/class are Metamath's floating hypotheses, retained as proof inputs;
+# |- marks provability. cv embeds a set variable into class syntax. Names of
+# connectives are adapted to hexpr: =>, iff, and, or, forall, exists, = and in.
+# Each declaration's comment gives the original Metamath statement and $d pairs.
+# h0, h1, ... are its hypotheses in Metamath order; p0, p1, ... are proof steps.
+#
+# DV annotations order syntax metavariables as B + C. Set variables constrained
+# by $d are bare (B); an ar edge permits occurrence in a formula (C). Bare
+# variables must remain distinct. equid, 19.8a and sp also declare x bare, as
+# required by their proofs. In particular, sp's (dv _) ALLOWS x to occur in ph.
+# ax7v/ax7v1/ax7v2 are inlined to ax-7: these aliases only add partial pairwise
+# distinctness, which a single B/C annotation cannot express in general.
+# fresh introduces a local set-variable hypothesis, not a provability axiom;
+# its uses in equid and 19.8a discharge the original dummy-variable conditions.
+
+(theory set.syntax nat {
+  (arr wff : 1 -> 1)
+  (arr setvar : 1 -> 1)
+  (arr class : 1 -> 1)
+  (arr |- : 1 -> 1)
+  (arr -. : 1 -> 1)
+  (arr => : 2 -> 1)
+  (arr iff : 2 -> 1)
+  (arr and : 2 -> 1)
+  (arr or : 2 -> 1)
+  (arr forall : 2 -> 1)
+  (arr cv : 1 -> 1)
+  (arr = : 2 -> 1)
+  (arr exists : 2 -> 1)
+  (arr in : 2 -> 1)
+  (arr ne : 2 -> 1)
+  (arr rforall : 3 -> 1)
+  (arr subset : 2 -> 1)
+  (arr empty : 0 -> 1)
+  (arr rel : 3 -> 1)
+  (arr dom : 1 -> 1)
+  (arr ran : 1 -> 1)
+  (arr suc : 1 -> 1)
+  (arr apply : 2 -> 1)
+  (arr omega : 0 -> 1)
+  (arr equinumerosity : 0 -> 1)
+})
+
+(theory set.proof set.syntax {
+  # A local set-variable declaration, used for Metamath's dummy variables.
+  (arr fresh (dv del) : [x.] -> ([x] setvar))
+
+  # wn: wff -. ph
+  (arr wn
+    : ([ph.] {([.ph] wff)})
+    -> ([ph.] (([.ph] -.) wff)))
+
+  # wi: wff ( ph -> ps )
+  (arr wi
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (([.ph ps] =>) wff)))
+
+  # ax-mp: |- ps
+  (arr ax-mp
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) ([.ph] |-) (([.ph ps] =>) |-)})
+    -> ([ph ps.] ([.ps] |-)))
+
+  # ax-1: |- ( ph -> ( ps -> ph ) )
+  (arr ax-1
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({[.ph] ([.ps ph] =>)} =>) |-)))
+
+  # ax-2: |- ( ( ph -> ( ps -> ch ) ) -> ( ( ph -> ps ) -> ( ph -> ch ) ) )
+  (arr ax-2
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff)})
+    -> ([ph ps ch.] (({({[.ph] ([.ps ch] =>)} =>) ({([.ph ps] =>) ([.ph ch] =>)} =>)} =>) |-)))
+
+  # ax-3: |- ( ( -. ph -> -. ps ) -> ( ps -> ph ) )
+  (arr ax-3
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({({([.ph] -.) ([.ps] -.)} =>) ([.ps ph] =>)} =>) |-)))
+
+  # mp2: |- ch
+  (def mp2
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.ph] |-) ([.ps] |-) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] ([.ch] |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h1 h2] wi [p0.])
+    ([.h0 p0 h3 h5] ax-mp [p1.])
+    ([.h1 h2 h4 p1] ax-mp [p2.])
+    [.p2]})
+
+  # a1i: |- ( ps -> ph )
+  (def a1i
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) ([.ph] |-)})
+    -> ([ph ps.] (([.ps ph] =>) |-))
+    = {[h0 h1 h2.]
+    ([.h1 h0] wi [p0.])
+    ([.h0 h1] ax-1 [p1.])
+    ([.h0 p0 h2 p1] ax-mp [p2.])
+    [.p2]})
+
+  # a2i: |- ( ( ph -> ps ) -> ( ph -> ch ) )
+  (def a2i
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] (({([.ph ps] =>) ([.ph ch] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1 h2] wi [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0 h1] wi [p2.])
+    ([.h0 h2] wi [p3.])
+    ([.p2 p3] wi [p4.])
+    ([.h0 h1 h2] ax-2 [p5.])
+    ([.p1 p4 h3 p5] ax-mp [p6.])
+    [.p6]})
+
+  # mpd: |- ( ph -> ch )
+  (def mpd
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] =>) |-) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h1] wi [p0.])
+    ([.h0 h2] wi [p1.])
+    ([.h0 h1 h2 h4] a2i [p2.])
+    ([.p0 p1 h3 p2] ax-mp [p3.])
+    [.p3]})
+
+  # imim2i: |- ( ( ch -> ph ) -> ( ch -> ps ) )
+  (def imim2i
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] =>) |-)})
+    -> ([ph ps ch.] (({([.ch ph] =>) ([.ch ps] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1] wi [p0.])
+    ([.p0 h2 h3] a1i [p1.])
+    ([.h2 h0 h1 p1] a2i [p2.])
+    [.p2]})
+
+  # syl: |- ( ph -> ch )
+  (def syl
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] =>) |-) (([.ps ch] =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2] wi [p0.])
+    ([.p0 h0 h4] a1i [p1.])
+    ([.h0 h1 h2 h3 p1] mpd [p2.])
+    [.p2]})
+
+  # mpi: |- ( ph -> ch )
+  (def mpi
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.ps] |-) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h0 h3] a1i [p0.])
+    ([.h0 h1 h2 p0 h4] mpd [p1.])
+    [.p1]})
+
+  # id: |- ( ph -> ph )
+  (def id
+    : ([ph.] {([.ph] wff)})
+    -> ([ph.] (([.ph ph] =>) |-))
+    = {[h0.]
+    ([.h0 h0] wi [p0.])
+    ([.h0 h0] ax-1 [p1.])
+    ([.h0 p0] ax-1 [p2.])
+    ([.h0 p0 h0 p1 p2] mpd [p3.])
+    [.p3]})
+
+  # idd: |- ( ph -> ( ps -> ps ) )
+  (def idd
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({[.ph] ([.ps ps] =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h1 h1] wi [p0.])
+    ([.h1] id [p1.])
+    ([.p0 h0 p1] a1i [p2.])
+    [.p2]})
+
+  # a1d: |- ( ph -> ( ch -> ps ) )
+  (def a1d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ch ps] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h2 h1] wi [p0.])
+    ([.h1 h2] ax-1 [p1.])
+    ([.h0 h1 p0 h3 p1] syl [p2.])
+    [.p2]})
+
+  # a2d: |- ( ph -> ( ( ps -> ch ) -> ( ps -> th ) ) )
+  (def a2d
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ({[.ps] ([.ch th] =>)} =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({([.ps ch] =>) ([.ps th] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h2 h3] wi [p0.])
+    ([.h1 p0] wi [p1.])
+    ([.h1 h2] wi [p2.])
+    ([.h1 h3] wi [p3.])
+    ([.p2 p3] wi [p4.])
+    ([.h1 h2 h3] ax-2 [p5.])
+    ([.h0 p1 p4 h4 p5] syl [p6.])
+    [.p6]})
+
+  # sylcom: |- ( ph -> ( ps -> th ) )
+  (def sylcom
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ps] ([.ch th] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ps th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h1 h2] wi [p0.])
+    ([.h1 h3] wi [p1.])
+    ([.h1 h2 h3 h5] a2i [p2.])
+    ([.h0 p0 p1 h4 p2] syl [p3.])
+    [.p3]})
+
+  # syl5com: |- ( ph -> ( ch -> th ) )
+  (def syl5com
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (([.ph ps] =>) |-) (({[.ch] ([.ps th] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ch th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h0 h1 h2 h4] a1d [p0.])
+    ([.h0 h2 h1 h3 p0 h5] sylcom [p1.])
+    [.p1]})
+
+  # com12: |- ( ps -> ( ph -> ch ) )
+  (def com12
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ps] ([.ph ch] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] id [p0.])
+    ([.h1 h1 h0 h2 p0 h3] syl5com [p1.])
+    [.p1]})
+
+  # syl5: |- ( ch -> ( ph -> th ) )
+  (def syl5
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (([.ph ps] =>) |-) (({[.ch] ([.ps th] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ch] ([.ph th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h0 h1 h2 h3 h4 h5] syl5com [p0.])
+    ([.h0 h2 h3 p0] com12 [p1.])
+    [.p1]})
+
+  # syl6: |- ( ph -> ( ps -> th ) )
+  (def syl6
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (([.ch th] =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ps th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h3] wi [p0.])
+    ([.p0 h1 h5] a1i [p1.])
+    ([.h0 h1 h2 h3 h4 p1] sylcom [p2.])
+    [.p2]})
+
+  # syl2im: |- ( ph -> ( ch -> ta ) )
+  (def syl2im
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (([.ph ps] =>) |-) (([.ch th] =>) |-) (({[.ps] ([.th ta] =>)} =>) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ([.ch ta] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6 h7.]
+    ([.h2 h4] wi [p0.])
+    ([.h2 h3 h1 h4 h6 h7] syl5 [p1.])
+    ([.h0 h1 p0 h5 p1] syl [p2.])
+    [.p2]})
+
+  # syl2imc: |- ( ch -> ( ph -> ta ) )
+  (def syl2imc
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (([.ph ps] =>) |-) (([.ch th] =>) |-) (({[.ps] ([.th ta] =>)} =>) |-)})
+    -> ([ph ps ch th ta.] (({[.ch] ([.ph ta] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6 h7.]
+    ([.h0 h1 h2 h3 h4 h5 h6 h7] syl2im [p0.])
+    ([.h0 h2 h4 p0] com12 [p1.])
+    [.p1]})
+
+  # pm2.27: |- ( ph -> ( ( ph -> ps ) -> ps ) )
+  (def pm2.27
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({[.ph] ({([.ph ps] =>) [.ps]} =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wi [p0.])
+    ([.p0] id [p1.])
+    ([.p0 h0 h1 p1] com12 [p2.])
+    [.p2]})
+
+  # mpdd: |- ( ph -> ( ps -> th ) )
+  (def mpdd
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ({[.ps] ([.ch th] =>)} =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ps th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h1 h2] wi [p0.])
+    ([.h1 h3] wi [p1.])
+    ([.h0 h1 h2 h3 h5] a2d [p2.])
+    ([.h0 p0 p1 h4 p2] mpd [p3.])
+    [.p3]})
+
+  # syld: |- ( ph -> ( ps -> th ) )
+  (def syld
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ([.ch th] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ps th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h3] wi [p0.])
+    ([.h0 p0 h1 h5] a1d [p1.])
+    ([.h0 h1 h2 h3 h4 p1] mpdd [p2.])
+    [.p2]})
+
+  # pm2.43i: |- ( ph -> ps )
+  (def pm2.43i
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (({[.ph] ([.ph ps] =>)} =>) |-)})
+    -> ([ph ps.] (([.ph ps] =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0] id [p0.])
+    ([.h0 h0 h1 p0 h2] mpd [p1.])
+    [.p1]})
+
+  # imim2d: |- ( ph -> ( ( th -> ps ) -> ( th -> ch ) ) )
+  (def imim2d
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({([.th ps] =>) ([.th ch] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2] wi [p0.])
+    ([.h0 p0 h3 h4] a1d [p1.])
+    ([.h0 h3 h1 h2 p1] a2d [p2.])
+    [.p2]})
+
+  # imim2: |- ( ( ph -> ps ) -> ( ( ch -> ph ) -> ( ch -> ps ) ) )
+  (def imim2
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff)})
+    -> ([ph ps ch.] (({([.ph ps] =>) ({([.ch ph] =>) ([.ch ps] =>)} =>)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1] wi [p0.])
+    ([.p0] id [p1.])
+    ([.p0 h0 h1 h2 p1] imim2d [p2.])
+    [.p2]})
+
+  # imim3i: |- ( ( th -> ph ) -> ( ( th -> ps ) -> ( th -> ch ) ) )
+  (def imim3i
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({([.th ph] =>) ({([.th ps] =>) ([.th ch] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h3 h0] wi [p0.])
+    ([.h1 h2] wi [p1.])
+    ([.h0 p1 h3 h4] imim2i [p2.])
+    ([.p0 h3 h1 h2 p2] a2d [p3.])
+    [.p3]})
+
+  # syl6c: |- ( ph -> ( ps -> ta ) )
+  (def syl6c
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ([.ps th] =>)} =>) |-) (({[.ch] ([.th ta] =>)} =>) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ([.ps ta] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6 h7.]
+    ([.h3 h4] wi [p0.])
+    ([.h0 h1 h2 p0 h5 h7] syl6 [p1.])
+    ([.h0 h1 h3 h4 h6 p1] mpdd [p2.])
+    [.p2]})
+
+  # syldd: |- ( ph -> ( ps -> ( ch -> ta ) ) )
+  (def syldd
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (({[.ph] ({[.ps] ([.ch th] =>)} =>)} =>) |-) (({[.ph] ({[.ps] ([.th ta] =>)} =>)} =>) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ({[.ps] ([.ch ta] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6.]
+    ([.h3 h4] wi [p0.])
+    ([.h2 h3] wi [p1.])
+    ([.h2 h4] wi [p2.])
+    ([.h3 h4 h2] imim2 [p3.])
+    ([.h0 h1 p0 p1 p2 h6 h5 p3] syl6c [p4.])
+    [.p4]})
+
+  # syl5d: |- ( ph -> ( th -> ( ps -> ta ) ) )
+  (def syl5d
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ({[.th] ([.ch ta] =>)} =>)} =>) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ({[.th] ([.ps ta] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6.]
+    ([.h1 h2] wi [p0.])
+    ([.h0 p0 h3 h5] a1d [p1.])
+    ([.h0 h3 h1 h2 h4 p1 h6] syldd [p2.])
+    [.p2]})
+
+  # syl9: |- ( ph -> ( th -> ( ps -> ta ) ) )
+  (def syl9
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.th] ([.ch ta] =>)} =>) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ({[.th] ([.ps ta] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6.]
+    ([.h2 h4] wi [p0.])
+    ([.h3 p0] wi [p1.])
+    ([.p1 h0 h6] a1i [p2.])
+    ([.h0 h1 h2 h3 h4 h5 p2] syl5d [p3.])
+    [.p3]})
+
+  # imim12d: |- ( ph -> ( ( ch -> th ) -> ( ps -> ta ) ) )
+  (def imim12d
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ([.th ta] =>)} =>) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ({([.ch th] =>) ([.ps ta] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6.]
+    ([.h2 h3] wi [p0.])
+    ([.h0 h3 h4 h2 h6] imim2d [p1.])
+    ([.h0 h1 h2 p0 h4 h5 p1] syl5d [p2.])
+    [.p2]})
+
+  # imim1d: |- ( ph -> ( ( ch -> th ) -> ( ps -> th ) ) )
+  (def imim1d
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({([.ch th] =>) ([.ps th] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h3] idd [p0.])
+    ([.h0 h1 h2 h3 h3 h4 p0] imim12d [p1.])
+    [.p1]})
+
+  # com23: |- ( ph -> ( ch -> ( ps -> th ) ) )
+  (def com23
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ({[.ps] ([.ch th] =>)} =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({[.ch] ([.ps th] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h2 h3] wi [p0.])
+    ([.h2 h3] pm2.27 [p1.])
+    ([.h0 h1 p0 h2 h3 h4 p1] syl9 [p2.])
+    [.p2]})
+
+  # pm2.86d: |- ( ph -> ( ps -> ( ch -> th ) ) )
+  (def pm2.86d
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ({([.ps ch] =>) ([.ps th] =>)} =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({[.ps] ([.ch th] =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2] wi [p0.])
+    ([.h1 h3] wi [p1.])
+    ([.h2 h1] ax-1 [p2.])
+    ([.h2 p0 h0 p1 p2 h4] syl5 [p3.])
+    ([.h0 h2 h1 h3 p3] com23 [p4.])
+    [.p4]})
+
+  # con4: |- ( ( -. ph -> -. ps ) -> ( ps -> ph ) )
+  (def con4
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({({([.ph] -.) ([.ps] -.)} =>) ([.ps ph] =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] ax-3 [p0.])
+    [.p0]})
+
+  # con4i: |- ( ps -> ph )
+  (def con4i
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (({([.ph] -.) ([.ps] -.)} =>) |-)})
+    -> ([ph ps.] (([.ps ph] =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0] wn [p0.])
+    ([.h1] wn [p1.])
+    ([.p0 p1] wi [p2.])
+    ([.h1 h0] wi [p3.])
+    ([.h0 h1] con4 [p4.])
+    ([.p2 p3 h2 p4] ax-mp [p5.])
+    [.p5]})
+
+  # con4d: |- ( ph -> ( ch -> ps ) )
+  (def con4d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ({([.ps] -.) ([.ch] -.)} =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ch ps] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.h2] wn [p1.])
+    ([.p0 p1] wi [p2.])
+    ([.h2 h1] wi [p3.])
+    ([.h1 h2] con4 [p4.])
+    ([.h0 p2 p3 h3 p4] syl [p5.])
+    [.p5]})
+
+  # mt4: |- ps
+  (def mt4
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) ([.ph] |-) (({([.ps] -.) ([.ph] -.)} =>) |-)})
+    -> ([ph ps.] ([.ps] |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1 h0 h3] con4i [p0.])
+    ([.h0 h1 h2 p0] ax-mp [p1.])
+    [.p1]})
+
+  # mt4d: |- ( ph -> ch )
+  (def mt4d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] =>) |-) (({[.ph] ({([.ch] -.) ([.ps] -.)} =>)} =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h2 h1 h4] con4d [p0.])
+    ([.h0 h1 h2 h3 p0] mpd [p1.])
+    [.p1]})
+
+  # pm2.21i: |- ( ph -> ps )
+  (def pm2.21i
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ph] -.) |-)})
+    -> ([ph ps.] (([.ph ps] =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0] wn [p0.])
+    ([.h1] wn [p1.])
+    ([.p0 p1 h2] a1i [p2.])
+    ([.h1 h0 p2] con4i [p3.])
+    [.p3]})
+
+  # pm2.21d: |- ( ph -> ( ps -> ch ) )
+  (def pm2.21d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps] -.)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps ch] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.h2] wn [p1.])
+    ([.h0 p0 p1 h3] a1d [p2.])
+    ([.h0 h2 h1 p2] con4d [p3.])
+    [.p3]})
+
+  # pm2.21: |- ( -. ph -> ( ph -> ps ) )
+  (def pm2.21
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph] -.) ([.ph ps] =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h0] wn [p0.])
+    ([.p0] id [p1.])
+    ([.p0 h0 h1 p1] pm2.21d [p2.])
+    [.p2]})
+
+  # jarli: |- ( -. ph -> ch )
+  (def jarli
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({([.ph ps] =>) [.ch]} =>) |-)})
+    -> ([ph ps ch.] (({([.ph] -.) [.ch]} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0] wn [p0.])
+    ([.h0 h1] wi [p1.])
+    ([.h0 h1] pm2.21 [p2.])
+    ([.p0 p1 h2 p2 h3] syl [p3.])
+    [.p3]})
+
+  # pm2.18d: |- ( ph -> ps )
+  (def pm2.18d
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (({[.ph] ({([.ps] -.) [.ps]} =>)} =>) |-)})
+    -> ([ph ps.] (([.ph ps] =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0] id [p0.])
+    ([.h1] wn [p1.])
+    ([.h0] wn [p2.])
+    ([.h1 p2] pm2.21 [p3.])
+    ([.h0 p1 h1 p2 h2 p3] sylcom [p4.])
+    ([.h0 h0 h1 p0 p4] mt4d [p5.])
+    [.p5]})
+
+  # pm2.18: |- ( ( -. ph -> ph ) -> ph )
+  (def pm2.18
+    : ([ph.] {([.ph] wff)})
+    -> ([ph.] (({({([.ph] -.) [.ph]} =>) [.ph]} =>) |-))
+    = {[h0.]
+    ([.h0] wn [p0.])
+    ([.p0 h0] wi [p1.])
+    ([.p1] id [p2.])
+    ([.p1 h0 p2] pm2.18d [p3.])
+    [.p3]})
+
+  # notnotr: |- ( -. -. ph -> ph )
+  (def notnotr
+    : ([ph.] {([.ph] wff)})
+    -> ([ph.] (({(([.ph] -.) -.) [.ph]} =>) |-))
+    = {[h0.]
+    ([.h0] wn [p0.])
+    ([.h0] pm2.18 [p1.])
+    ([.p0 h0 h0 p1] jarli [p2.])
+    [.p2]})
+
+  # notnotri: |- ph
+  (def notnotri
+    : ([ph.] {([.ph] wff) ((([.ph] -.) -.) |-)})
+    -> ([ph.] ([.ph] |-))
+    = {[h0 h1.]
+    ([.h0] wn [p0.])
+    ([.p0] wn [p1.])
+    ([.p1] wn [p2.])
+    ([.p0 p2 h1] pm2.21i [p3.])
+    ([.p1 h0 h1 p3] mt4 [p4.])
+    [.p4]})
+
+  # con2d: |- ( ph -> ( ch -> -. ps ) )
+  (def con2d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ({[.ps] ([.ch] -.)} =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ({[.ch] ([.ps] -.)} =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.p0] wn [p1.])
+    ([.h2] wn [p2.])
+    ([.h1] notnotr [p3.])
+    ([.p1 h1 h0 p2 p3 h3] syl5 [p4.])
+    ([.h0 p0 h2 p4] con4d [p5.])
+    [.p5]})
+
+  # mt2d: |- ( ph -> -. ps )
+  (def mt2d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ch] =>) |-) (({[.ph] ({[.ps] ([.ch] -.)} =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps] -.)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1] wn [p0.])
+    ([.h0 h1 h2 h4] con2d [p1.])
+    ([.h0 h2 p0 h3 p1] mpd [p2.])
+    [.p2]})
+
+  # nsyl3: |- ( ch -> -. ph )
+  (def nsyl3
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps] -.)} =>) |-) (([.ch ps] =>) |-)})
+    -> ([ph ps ch.] (({[.ch] ([.ph] -.)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1] wn [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.p1 h2 h3] a1i [p2.])
+    ([.h2 h0 h1 h4 p2] mt2d [p3.])
+    [.p3]})
+
+  # con2i: |- ( ps -> -. ph )
+  (def con2i
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (({[.ph] ([.ps] -.)} =>) |-)})
+    -> ([ph ps.] (({[.ps] ([.ph] -.)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h1] id [p0.])
+    ([.h0 h1 h1 h2 p0] nsyl3 [p1.])
+    [.p1]})
+
+  # nsyl2: |- ( ph -> ch )
+  (def nsyl2
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps] -.)} =>) |-) (({([.ch] -.) [.ps]} =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h2] wn [p0.])
+    ([.h0 h1 p0 h3 h4] nsyl3 [p1.])
+    ([.h2 h0 p1] con4i [p2.])
+    [.p2]})
+
+  # notnot: |- ( ph -> -. -. ph )
+  (def notnot
+    : ([ph.] {([.ph] wff)})
+    -> ([ph.] (({[.ph] (([.ph] -.) -.)} =>) |-))
+    = {[h0.]
+    ([.h0] wn [p0.])
+    ([.p0] id [p1.])
+    ([.p0 h0 p1] con2i [p2.])
+    [.p2]})
+
+  # con1d: |- ( ph -> ( -. ch -> ps ) )
+  (def con1d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ({([.ps] -.) [.ch]} =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ({([.ch] -.) [.ps]} =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h2] wn [p0.])
+    ([.h1] wn [p1.])
+    ([.p0] wn [p2.])
+    ([.h2] notnot [p3.])
+    ([.h0 p1 h2 p2 h3 p3] syl6 [p4.])
+    ([.h0 h1 p0 p4] con4d [p5.])
+    [.p5]})
+
+  # con1: |- ( ( -. ph -> ps ) -> ( -. ps -> ph ) )
+  (def con1
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({({([.ph] -.) [.ps]} =>) ({([.ps] -.) [.ph]} =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h0] wn [p0.])
+    ([.p0 h1] wi [p1.])
+    ([.p1] id [p2.])
+    ([.p1 h0 h1 p2] con1d [p3.])
+    [.p3]})
+
+  # con1i: |- ( -. ps -> ph )
+  (def con1i
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (({([.ph] -.) [.ps]} =>) |-)})
+    -> ([ph ps.] (({([.ps] -.) [.ph]} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h1] wn [p0.])
+    ([.p0] id [p1.])
+    ([.p0 h1 h0 p1 h2] nsyl2 [p2.])
+    [.p2]})
+
+  # con3d: |- ( ph -> ( -. ch -> -. ps ) )
+  (def con3d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ({([.ch] -.) ([.ps] -.)} =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.p0] wn [p1.])
+    ([.h1] notnotr [p2.])
+    ([.p1 h1 h0 h2 p2 h3] syl5 [p3.])
+    ([.h0 p0 h2 p3] con1d [p4.])
+    [.p4]})
+
+  # con3rr3: |- ( -. ch -> ( ph -> -. ps ) )
+  (def con3rr3
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] (({([.ch] -.) ({[.ph] ([.ps] -.)} =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h2] wn [p0.])
+    ([.h1] wn [p1.])
+    ([.h0 h1 h2 h3] con3d [p2.])
+    ([.h0 p0 p1 p2] com12 [p3.])
+    [.p3]})
+
+  # pm3.2im: |- ( ph -> ( ps -> -. ( ph -> -. ps ) ) )
+  (def pm3.2im
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({[.ph] ({[.ps] (({[.ph] ([.ps] -.)} =>) -.)} =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h1] wn [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0 p0] pm2.27 [p2.])
+    ([.h0 p1 h1 p2] con2d [p3.])
+    [.p3]})
+
+  # impi: |- ( -. ( ph -> -. ps ) -> ch )
+  (def impi
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch.] (({(({[.ph] ([.ps] -.)} =>) -.) [.ch]} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0 h1 h2 h3] con3rr3 [p2.])
+    ([.h2 p1 p2] con1i [p3.])
+    [.p3]})
+
+  # expi: |- ( ph -> ( ps -> ch ) )
+  (def expi
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({(({[.ph] ([.ps] -.)} =>) -.) [.ch]} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps ch] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.p1] wn [p2.])
+    ([.h0 h1] pm3.2im [p3.])
+    ([.h0 h1 p2 h2 p3 h3] syl6 [p4.])
+    [.p4]})
+
+  # simprim: |- ( -. ( ph -> -. ps ) -> ps )
+  (def simprim
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({(({[.ph] ([.ps] -.)} =>) -.) [.ps]} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] idd [p0.])
+    ([.h0 h1 h1 p0] impi [p1.])
+    [.p1]})
+
+  # simplim: |- ( -. ( ph -> ps ) -> ph )
+  (def simplim
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({(([.ph ps] =>) -.) [.ph]} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wi [p0.])
+    ([.h0 h1] pm2.21 [p1.])
+    ([.h0 p0 p1] con1i [p2.])
+    [.p2]})
+
+  # pm2.61d: |- ( ph -> ch )
+  (def pm2.61d
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ({([.ps] -.) [.ch]} =>)} =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h2] wn [p0.])
+    ([.h0 h1 h2 h4] con1d [p1.])
+    ([.h0 p0 h1 h2 p1 h3] syld [p2.])
+    ([.h0 h2 p2] pm2.18d [p3.])
+    [.p3]})
+
+  # pm2.61d1: |- ( ph -> ch )
+  (def pm2.61d1
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({([.ps] -.) [.ch]} =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1] wn [p0.])
+    ([.p0 h2] wi [p1.])
+    ([.p1 h0 h4] a1i [p2.])
+    ([.h0 h1 h2 h3 p2] pm2.61d [p3.])
+    [.p3]})
+
+  # ja: |- ( ( ph -> ps ) -> ch )
+  (def ja
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({([.ph] -.) [.ch]} =>) |-) (([.ps ch] =>) |-)})
+    -> ([ph ps ch.] (({([.ph ps] =>) [.ch]} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h1] wi [p0.])
+    ([.h1 h2 h0 h4] imim2i [p1.])
+    ([.p0 h0 h2 p1 h3] pm2.61d1 [p2.])
+    [.p2]})
+
+  # pm2.01: |- ( ( ph -> -. ph ) -> -. ph )
+  (def pm2.01
+    : ([ph.] {([.ph] wff)})
+    -> ([ph.] (({({[.ph] ([.ph] -.)} =>) ([.ph] -.)} =>) |-))
+    = {[h0.]
+    ([.h0] wn [p0.])
+    ([.p0] id [p1.])
+    ([.h0 p0 p0 p1 p1] ja [p2.])
+    [.p2]})
+
+  # pm2.01i: |- -. ph
+  (def pm2.01i
+    : ([ph.] {([.ph] wff) (({[.ph] ([.ph] -.)} =>) |-)})
+    -> ([ph.] (([.ph] -.) |-))
+    = {[h0 h1.]
+    ([.h0] wn [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0] pm2.01 [p2.])
+    ([.p1 p0 h1 p2] ax-mp [p3.])
+    [.p3]})
+
+  # pm2.65i: |- -. ph
+  (def pm2.65i
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ph ps] =>) |-) (({[.ph] ([.ps] -.)} =>) |-)})
+    -> ([ph ps.] (([.ph] -.) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1 h0 h3 h2] nsyl3 [p0.])
+    ([.h0 p0] pm2.01i [p1.])
+    [.p1]})
+
+  # mto: |- -. ph
+  (def mto
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ps] -.) |-) (([.ph ps] =>) |-)})
+    -> ([ph ps.] (([.ph] -.) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.p0 h0 h2] a1i [p1.])
+    ([.h0 h1 h3 p1] pm2.65i [p2.])
+    [.p2]})
+
+  # mt3: |- ph
+  (def mt3
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ps] -.) |-) (({([.ph] -.) [.ps]} =>) |-)})
+    -> ([ph ps.] ([.ph] |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0] wn [p0.])
+    ([.p0 h1 h2 h3] mto [p1.])
+    ([.h0 p1] notnotri [p2.])
+    [.p2]})
+
+  # wb: wff ( ph <-> ps )
+  (arr wb
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (([.ph ps] iff) wff)))
+
+  # df-bi: |- -. ( ( ( ph <-> ps ) -> -. ( ( ph -> ps ) -> -. ( ps -> ph ) ) ) -> -. ( -. ( ( ph -> ps ) -> -. ( ps -> ph ) ) -> ( ph <-> ps ) ) )
+  (arr df-bi
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] ((({({([.ph ps] iff) (({([.ph ps] =>) (([.ps ph] =>) -.)} =>) -.)} =>) (({(({([.ph ps] =>) (([.ps ph] =>) -.)} =>) -.) ([.ph ps] iff)} =>) -.)} =>) -.) |-)))
+
+  # impbi: |- ( ( ph -> ps ) -> ( ( ps -> ph ) -> ( ph <-> ps ) ) )
+  (def impbi
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] =>) ({([.ps ph] =>) ([.ph ps] iff)} =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wi [p0.])
+    ([.h1 h0] wi [p1.])
+    ([.h0 h1] wb [p2.])
+    ([.p1] wn [p3.])
+    ([.p0 p3] wi [p4.])
+    ([.p4] wn [p5.])
+    ([.p2 p5] wi [p6.])
+    ([.p5 p2] wi [p7.])
+    ([.p7] wn [p8.])
+    ([.p6 p8] wi [p9.])
+    ([.p9] wn [p10.])
+    ([.h0 h1] df-bi [p11.])
+    ([.p6 p7] simprim [p12.])
+    ([.p10 p7 p11 p12] ax-mp [p13.])
+    ([.p0 p1 p2 p13] expi [p14.])
+    [.p14]})
+
+  # impbii: |- ( ph <-> ps )
+  (def impbii
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ph ps] =>) |-) (([.ps ph] =>) |-)})
+    -> ([ph ps.] (([.ph ps] iff) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1] wi [p0.])
+    ([.h1 h0] wi [p1.])
+    ([.h0 h1] wb [p2.])
+    ([.h0 h1] impbi [p3.])
+    ([.p0 p1 p2 h2 h3 p3] mp2 [p4.])
+    [.p4]})
+
+  # impbidd: |- ( ph -> ( ps -> ( ch <-> th ) ) )
+  (def impbidd
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ({[.ps] ([.ch th] =>)} =>)} =>) |-) (({[.ph] ({[.ps] ([.th ch] =>)} =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({[.ps] ([.ch th] iff)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h3] wi [p0.])
+    ([.h3 h2] wi [p1.])
+    ([.h2 h3] wb [p2.])
+    ([.h2 h3] impbi [p3.])
+    ([.h0 h1 p0 p1 p2 h4 h5 p3] syl6c [p4.])
+    [.p4]})
+
+  # impbid21d: |- ( ph -> ( ps -> ( ch <-> th ) ) )
+  (def impbid21d
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ps] ([.ch th] =>)} =>) |-) (({[.ph] ([.th ch] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({[.ps] ([.ch th] iff)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h3] wi [p0.])
+    ([.h3 h2] wi [p1.])
+    ([.h2 h3] wb [p2.])
+    ([.h2 h3] impbi [p3.])
+    ([.h1 p0 h0 p1 p2 h4 h5 p3] syl2imc [p4.])
+    [.p4]})
+
+  # impbid: |- ( ph -> ( ps <-> ch ) )
+  (def impbid
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ([.ch ps] =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps ch] iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2] wb [p0.])
+    ([.h0 h0 h1 h2 h3 h4] impbid21d [p1.])
+    ([.h0 p0 p1] pm2.43i [p2.])
+    [.p2]})
+
+  # dfbi1: |- ( ( ph <-> ps ) <-> -. ( ( ph -> ps ) -> -. ( ps -> ph ) ) )
+  (def dfbi1
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] iff) (({([.ph ps] =>) (([.ps ph] =>) -.)} =>) -.)} iff) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wb [p0.])
+    ([.h0 h1] wi [p1.])
+    ([.h1 h0] wi [p2.])
+    ([.p2] wn [p3.])
+    ([.p1 p3] wi [p4.])
+    ([.p4] wn [p5.])
+    ([.p0 p5] wb [p6.])
+    ([.p0 p5] wi [p7.])
+    ([.p5 p0] wi [p8.])
+    ([.p8] wn [p9.])
+    ([.p7 p9] wi [p10.])
+    ([.h0 h1] df-bi [p11.])
+    ([.p0 p5] impbi [p12.])
+    ([.p7 p8 p6 p12] con3rr3 [p13.])
+    ([.p6 p10 p11 p13] mt3 [p14.])
+    [.p14]})
+
+  # biimp: |- ( ( ph <-> ps ) -> ( ph -> ps ) )
+  (def biimp
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] iff) ([.ph ps] =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wb [p0.])
+    ([.h0 h1] wi [p1.])
+    ([.h1 h0] wi [p2.])
+    ([.p2] wn [p3.])
+    ([.p1 p3] wi [p4.])
+    ([.p4] wn [p5.])
+    ([.p0 p5] wi [p6.])
+    ([.p5 p0] wi [p7.])
+    ([.p7] wn [p8.])
+    ([.p6 p8] wi [p9.])
+    ([.p9] wn [p10.])
+    ([.h0 h1] df-bi [p11.])
+    ([.p6 p8] simplim [p12.])
+    ([.p10 p6 p11 p12] ax-mp [p13.])
+    ([.p1 p3] simplim [p14.])
+    ([.p0 p5 p1 p13 p14] syl [p15.])
+    [.p15]})
+
+  # biimpi: |- ( ph -> ps )
+  (def biimpi
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ph ps] iff) |-)})
+    -> ([ph ps.] (([.ph ps] =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1] wb [p0.])
+    ([.h0 h1] wi [p1.])
+    ([.h0 h1] biimp [p2.])
+    ([.p0 p1 h2 p2] ax-mp [p3.])
+    [.p3]})
+
+  # sylbi: |- ( ph -> ch )
+  (def sylbi
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] iff) |-) (([.ps ch] =>) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h1 h3] biimpi [p0.])
+    ([.h0 h1 h2 p0 h4] syl [p1.])
+    [.p1]})
+
+  # sylib: |- ( ph -> ch )
+  (def sylib
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] =>) |-) (([.ps ch] iff) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2 h4] biimpi [p0.])
+    ([.h0 h1 h2 h3 p0] syl [p1.])
+    [.p1]})
+
+  # sylbb: |- ( ph -> ch )
+  (def sylbb
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] iff) |-) (([.ps ch] iff) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2 h4] biimpi [p0.])
+    ([.h0 h1 h2 h3 p0] sylbi [p1.])
+    [.p1]})
+
+  # biimpr: |- ( ( ph <-> ps ) -> ( ps -> ph ) )
+  (def biimpr
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] iff) ([.ps ph] =>)} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wb [p0.])
+    ([.h0 h1] wi [p1.])
+    ([.h1 h0] wi [p2.])
+    ([.p2] wn [p3.])
+    ([.p1 p3] wi [p4.])
+    ([.p4] wn [p5.])
+    ([.h0 h1] dfbi1 [p6.])
+    ([.p1 p2] simprim [p7.])
+    ([.p0 p5 p2 p6 p7] sylbi [p8.])
+    [.p8]})
+
+  # bicom1: |- ( ( ph <-> ps ) -> ( ps <-> ph ) )
+  (def bicom1
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] iff) ([.ps ph] iff)} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wb [p0.])
+    ([.h0 h1] biimpr [p1.])
+    ([.h0 h1] biimp [p2.])
+    ([.p0 h1 h0 p1 p2] impbid [p3.])
+    [.p3]})
+
+  # bicom: |- ( ( ph <-> ps ) <-> ( ps <-> ph ) )
+  (def bicom
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] iff) ([.ps ph] iff)} iff) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wb [p0.])
+    ([.h1 h0] wb [p1.])
+    ([.h0 h1] bicom1 [p2.])
+    ([.h1 h0] bicom1 [p3.])
+    ([.p0 p1 p2 p3] impbii [p4.])
+    [.p4]})
+
+  # bicomd: |- ( ph -> ( ch <-> ps ) )
+  (def bicomd
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] iff)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ch ps] iff)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1 h2] wb [p0.])
+    ([.h2 h1] wb [p1.])
+    ([.h1 h2] bicom [p2.])
+    ([.h0 p0 p1 h3 p2] sylib [p3.])
+    [.p3]})
+
+  # bicomi: |- ( ps <-> ph )
+  (def bicomi
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ph ps] iff) |-)})
+    -> ([ph ps.] (([.ps ph] iff) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1] wb [p0.])
+    ([.h1 h0] wb [p1.])
+    ([.h0 h1] bicom1 [p2.])
+    ([.p0 p1 h2 p2] ax-mp [p3.])
+    [.p3]})
+
+  # impcon4bid: |- ( ph -> ( ps <-> ch ) )
+  (def impcon4bid
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (({[.ph] ({([.ps] -.) ([.ch] -.)} =>)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps ch] iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h1 h2 h4] con4d [p0.])
+    ([.h0 h1 h2 h3 p0] impbid [p1.])
+    [.p1]})
+
+  # biimpri: |- ( ps -> ph )
+  (def biimpri
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ph ps] iff) |-)})
+    -> ([ph ps.] (([.ps ph] =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1 h2] bicomi [p0.])
+    ([.h1 h0 p0] biimpi [p1.])
+    [.p1]})
+
+  # biimpd: |- ( ph -> ( ps -> ch ) )
+  (def biimpd
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] iff)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps ch] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1 h2] wb [p0.])
+    ([.h1 h2] wi [p1.])
+    ([.h1 h2] biimp [p2.])
+    ([.h0 p0 p1 h3 p2] syl [p3.])
+    [.p3]})
+
+  # mpbi: |- ps
+  (def mpbi
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) ([.ph] |-) (([.ph ps] iff) |-)})
+    -> ([ph ps.] ([.ps] |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1 h3] biimpi [p0.])
+    ([.h0 h1 h2 p0] ax-mp [p1.])
+    [.p1]})
+
+  # mpbir: |- ph
+  (def mpbir
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) ([.ps] |-) (([.ph ps] iff) |-)})
+    -> ([ph ps.] ([.ph] |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1 h3] biimpri [p0.])
+    ([.h1 h0 h2 p0] ax-mp [p1.])
+    [.p1]})
+
+  # sylibr: |- ( ph -> ch )
+  (def sylibr
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] =>) |-) (([.ch ps] iff) |-)})
+    -> ([ph ps ch.] (([.ph ch] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h2 h1 h4] biimpri [p0.])
+    ([.h0 h1 h2 h3 p0] syl [p1.])
+    [.p1]})
+
+  # sylbbr: |- ( ch -> ph )
+  (def sylbbr
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] iff) |-) (([.ps ch] iff) |-)})
+    -> ([ph ps ch.] (([.ch ph] =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2 h4] biimpri [p0.])
+    ([.h2 h1 h0 p0 h3] sylibr [p1.])
+    [.p1]})
+
+  # biimtrrid: |- ( ch -> ( ph -> th ) )
+  (def biimtrrid
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (([.ps ph] iff) |-) (({[.ch] ([.ps th] =>)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ch] ([.ph th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h1 h0 h4] biimpri [p0.])
+    ([.h0 h1 h2 h3 p0 h5] syl5 [p1.])
+    [.p1]})
+
+  # imbitrid: |- ( ch -> ( ph -> th ) )
+  (def imbitrid
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (([.ph ps] =>) |-) (({[.ch] ([.ps th] iff)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ch] ([.ph th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h1 h3 h5] biimpd [p0.])
+    ([.h0 h1 h2 h3 h4 p0] syl5 [p1.])
+    [.p1]})
+
+  # imbitrrid: |- ( ch -> ( ph -> ps ) )
+  (def imbitrrid
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (([.ph th] =>) |-) (({[.ch] ([.ps th] iff)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ch] ([.ph ps] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h1 h3 h5] bicomd [p0.])
+    ([.h0 h3 h2 h1 h4 p0] imbitrid [p1.])
+    [.p1]})
+
+  # biimprd: |- ( ph -> ( ch -> ps ) )
+  (def biimprd
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] iff)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ch ps] =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h2] id [p0.])
+    ([.h2 h1 h0 h2 p0 h3] imbitrrid [p1.])
+    [.p1]})
+
+  # imbitrdi: |- ( ph -> ( ps -> th ) )
+  (def imbitrdi
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (([.ch th] iff) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ps th] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h3 h5] biimpi [p0.])
+    ([.h0 h1 h2 h3 h4 p0] syl6 [p1.])
+    [.p1]})
+
+  # pm5.74: |- ( ( ph -> ( ps <-> ch ) ) <-> ( ( ph -> ps ) <-> ( ph -> ch ) ) )
+  (def pm5.74
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff)})
+    -> ([ph ps ch.] (({({[.ph] ([.ps ch] iff)} =>) ({([.ph ps] =>) ([.ph ch] =>)} iff)} iff) |-))
+    = {[h0 h1 h2.]
+    ([.h1 h2] wb [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0 h1] wi [p2.])
+    ([.h0 h2] wi [p3.])
+    ([.p2 p3] wb [p4.])
+    ([.h1 h2] biimp [p5.])
+    ([.p0 h1 h2 h0 p5] imim3i [p6.])
+    ([.h1 h2] biimpr [p7.])
+    ([.p0 h2 h1 h0 p7] imim3i [p8.])
+    ([.p1 p2 p3 p6 p8] impbid [p9.])
+    ([.p2 p3] biimp [p10.])
+    ([.p4 h0 h1 h2 p10] pm2.86d [p11.])
+    ([.p2 p3] biimpr [p12.])
+    ([.p4 h0 h2 h1 p12] pm2.86d [p13.])
+    ([.p4 h0 h1 h2 p11 p13] impbidd [p14.])
+    ([.p1 p4 p9 p14] impbii [p15.])
+    [.p15]})
+
+  # pm5.74i: |- ( ( ph -> ps ) <-> ( ph -> ch ) )
+  (def pm5.74i
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] iff)} =>) |-)})
+    -> ([ph ps ch.] (({([.ph ps] =>) ([.ph ch] =>)} iff) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1 h2] wb [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0 h1] wi [p2.])
+    ([.h0 h2] wi [p3.])
+    ([.p2 p3] wb [p4.])
+    ([.h0 h1 h2] pm5.74 [p5.])
+    ([.p1 p4 h3 p5] mpbi [p6.])
+    [.p6]})
+
+  # pm5.74ri: |- ( ph -> ( ps <-> ch ) )
+  (def pm5.74ri
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({([.ph ps] =>) ([.ph ch] =>)} iff) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps ch] iff)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1 h2] wb [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0 h1] wi [p2.])
+    ([.h0 h2] wi [p3.])
+    ([.p2 p3] wb [p4.])
+    ([.h0 h1 h2] pm5.74 [p5.])
+    ([.p1 p4 h3 p5] mpbir [p6.])
+    [.p6]})
+
+  # bitri: |- ( ph <-> ch )
+  (def bitri
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] iff) |-) (([.ps ch] iff) |-)})
+    -> ([ph ps ch.] (([.ph ch] iff) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h1 h2 h3 h4] sylbb [p0.])
+    ([.h0 h1 h2 h3 h4] sylbbr [p1.])
+    ([.h0 h2 p0 p1] impbii [p2.])
+    [.p2]})
+
+  # bitrd: |- ( ph -> ( ps <-> th ) )
+  (def bitrd
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] iff)} =>) |-) (({[.ph] ([.ch th] iff)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ps th] iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h0 h1] wi [p0.])
+    ([.h0 h2] wi [p1.])
+    ([.h0 h3] wi [p2.])
+    ([.h0 h1 h2 h4] pm5.74i [p3.])
+    ([.h0 h2 h3 h5] pm5.74i [p4.])
+    ([.p0 p1 p2 p3 p4] bitri [p5.])
+    ([.h0 h1 h3 p5] pm5.74ri [p6.])
+    [.p6]})
+
+  # bitrid: |- ( ch -> ( ph <-> th ) )
+  (def bitrid
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (([.ph ps] iff) |-) (({[.ch] ([.ps th] iff)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ch] ([.ph th] iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h0 h1] wb [p0.])
+    ([.p0 h2 h4] a1i [p1.])
+    ([.h2 h0 h1 h3 p1 h5] bitrd [p2.])
+    [.p2]})
+
+  # bitr3id: |- ( ch -> ( ph <-> th ) )
+  (def bitr3id
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (([.ps ph] iff) |-) (({[.ch] ([.ps th] iff)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ch] ([.ph th] iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h1 h0 h4] bicomi [p0.])
+    ([.h0 h1 h2 h3 p0 h5] bitrid [p1.])
+    [.p1]})
+
+  # bitrdi: |- ( ph -> ( ps <-> th ) )
+  (def bitrdi
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] iff)} =>) |-) (([.ch th] iff) |-)})
+    -> ([ph ps ch th.] (({[.ph] ([.ps th] iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5.]
+    ([.h2 h3] wb [p0.])
+    ([.p0 h0 h5] a1i [p1.])
+    ([.h0 h1 h2 h3 h4 p1] bitrd [p2.])
+    [.p2]})
+
+  # 3imtr3g: |- ( ph -> ( th -> ta ) )
+  (def 3imtr3g
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (({[.ph] ([.ps ch] =>)} =>) |-) (([.ps th] iff) |-) (([.ch ta] iff) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ([.th ta] =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6 h7.]
+    ([.h3 h1 h0 h2 h6 h5] biimtrrid [p0.])
+    ([.h0 h3 h2 h4 p0 h7] imbitrdi [p1.])
+    [.p1]})
+
+  # 3bitr3g: |- ( ph -> ( th <-> ta ) )
+  (def 3bitr3g
+    : ([ph ps ch th ta.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) ([.ta] wff) (({[.ph] ([.ps ch] iff)} =>) |-) (([.ps th] iff) |-) (([.ch ta] iff) |-)})
+    -> ([ph ps ch th ta.] (({[.ph] ([.th ta] iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4 h5 h6 h7.]
+    ([.h3 h1 h0 h2 h6 h5] bitr3id [p0.])
+    ([.h0 h3 h2 h4 p0 h7] bitrdi [p1.])
+    [.p1]})
+
+  # notnotb: |- ( ph <-> -. -. ph )
+  (def notnotb
+    : ([ph.] {([.ph] wff)})
+    -> ([ph.] (({[.ph] (([.ph] -.) -.)} iff) |-))
+    = {[h0.]
+    ([.h0] wn [p0.])
+    ([.p0] wn [p1.])
+    ([.h0] notnot [p2.])
+    ([.h0] notnotr [p3.])
+    ([.h0 p1 p2 p3] impbii [p4.])
+    [.p4]})
+
+  # con4bid: |- ( ph -> ( ps <-> ch ) )
+  (def con4bid
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ({([.ps] -.) ([.ch] -.)} iff)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ps ch] iff)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.h2] wn [p1.])
+    ([.h0 p0 p1 h3] biimprd [p2.])
+    ([.h0 h2 h1 p2] con4d [p3.])
+    ([.h0 p0 p1 h3] biimpd [p4.])
+    ([.h0 h1 h2 p3 p4] impcon4bid [p5.])
+    [.p5]})
+
+  # notbid: |- ( ph -> ( -. ps <-> -. ch ) )
+  (def notbid
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps ch] iff)} =>) |-)})
+    -> ([ph ps ch.] (({[.ph] ({([.ps] -.) ([.ch] -.)} iff)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1] wn [p0.])
+    ([.h2] wn [p1.])
+    ([.p0] wn [p2.])
+    ([.p1] wn [p3.])
+    ([.h1] notnotb [p4.])
+    ([.h2] notnotb [p5.])
+    ([.h0 h1 h2 p2 p3 h3 p4 p5] 3bitr3g [p6.])
+    ([.h0 p0 p1 p6] con4bid [p7.])
+    [.p7]})
+
+  # notbi: |- ( ( ph <-> ps ) <-> ( -. ph <-> -. ps ) )
+  (def notbi
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] iff) ({([.ph] -.) ([.ps] -.)} iff)} iff) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wb [p0.])
+    ([.h0] wn [p1.])
+    ([.h1] wn [p2.])
+    ([.p1 p2] wb [p3.])
+    ([.p0] id [p4.])
+    ([.p0 h0 h1 p4] notbid [p5.])
+    ([.p3] id [p6.])
+    ([.p3 h0 h1 p6] con4bid [p7.])
+    ([.p0 p3 p5 p7] impbii [p8.])
+    [.p8]})
+
+  # notbii: |- ( -. ph <-> -. ps )
+  (def notbii
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (([.ph ps] iff) |-)})
+    -> ([ph ps.] (({([.ph] -.) ([.ps] -.)} iff) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1] wb [p0.])
+    ([.h0] wn [p1.])
+    ([.h1] wn [p2.])
+    ([.p1 p2] wb [p3.])
+    ([.h0 h1] notbi [p4.])
+    ([.p0 p3 h2 p4] mpbi [p5.])
+    [.p5]})
+
+  # xchbinx: |- ( ph <-> -. ch )
+  (def xchbinx
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps] -.)} iff) |-) (([.ps ch] iff) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ch] -.)} iff) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1] wn [p0.])
+    ([.h2] wn [p1.])
+    ([.h1 h2 h4] notbii [p2.])
+    ([.h0 p0 p1 h3 p2] bitri [p3.])
+    [.p3]})
+
+  # xchbinxr: |- ( ph <-> -. ch )
+  (def xchbinxr
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (({[.ph] ([.ps] -.)} iff) |-) (([.ch ps] iff) |-)})
+    -> ([ph ps ch.] (({[.ph] ([.ch] -.)} iff) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h2 h1 h4] bicomi [p0.])
+    ([.h0 h1 h2 h3 p0] xchbinx [p1.])
+    [.p1]})
+
+  # imbi1d: |- ( ph -> ( ( ps -> th ) <-> ( ch -> th ) ) )
+  (def imbi1d
+    : ([ph ps ch th.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.th] wff) (({[.ph] ([.ps ch] iff)} =>) |-)})
+    -> ([ph ps ch th.] (({[.ph] ({([.ps th] =>) ([.ch th] =>)} iff)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h3] wi [p0.])
+    ([.h2 h3] wi [p1.])
+    ([.h0 h1 h2 h4] biimprd [p2.])
+    ([.h0 h2 h1 h3 p2] imim1d [p3.])
+    ([.h0 h1 h2 h4] biimpd [p4.])
+    ([.h0 h1 h2 h3 p4] imim1d [p5.])
+    ([.h0 p0 p1 p3 p5] impbid [p6.])
+    [.p6]})
+
+  # imbi1: |- ( ( ph <-> ps ) -> ( ( ph -> ch ) <-> ( ps -> ch ) ) )
+  (def imbi1
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff)})
+    -> ([ph ps ch.] (({([.ph ps] iff) ({([.ph ch] =>) ([.ps ch] =>)} iff)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1] wb [p0.])
+    ([.p0] id [p1.])
+    ([.p0 h0 h1 h2 p1] imbi1d [p2.])
+    [.p2]})
+
+  # imbi1i: |- ( ( ph -> ch ) <-> ( ps -> ch ) )
+  (def imbi1i
+    : ([ph ps ch.] {([.ph] wff) ([.ps] wff) ([.ch] wff) (([.ph ps] iff) |-)})
+    -> ([ph ps ch.] (({([.ph ch] =>) ([.ps ch] =>)} iff) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1] wb [p0.])
+    ([.h0 h2] wi [p1.])
+    ([.h1 h2] wi [p2.])
+    ([.p1 p2] wb [p3.])
+    ([.h0 h1 h2] imbi1 [p4.])
+    ([.p0 p3 h3 p4] ax-mp [p5.])
+    [.p5]})
+
+  # con2bii: |- ( ps <-> -. ph )
+  (def con2bii
+    : ([ph ps.] {([.ph] wff) ([.ps] wff) (({[.ph] ([.ps] -.)} iff) |-)})
+    -> ([ph ps.] (({[.ps] ([.ph] -.)} iff) |-))
+    = {[h0 h1 h2.]
+    ([.h1] wn [p0.])
+    ([.h1] notnotb [p1.])
+    ([.h1 p0 h0 p1 h2] xchbinxr [p2.])
+    [.p2]})
+
+  # con1b: |- ( ( -. ph -> ps ) <-> ( -. ps -> ph ) )
+  (def con1b
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({({([.ph] -.) [.ps]} =>) ({([.ps] -.) [.ph]} =>)} iff) |-))
+    = {[h0 h1.]
+    ([.h0] wn [p0.])
+    ([.p0 h1] wi [p1.])
+    ([.h1] wn [p2.])
+    ([.p2 h0] wi [p3.])
+    ([.h0 h1] con1 [p4.])
+    ([.h1 h0] con1 [p5.])
+    ([.p1 p3 p4 p5] impbii [p6.])
+    [.p6]})
+
+  # wa: wff ( ph /\ ps )
+  (arr wa
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (([.ph ps] and) wff)))
+
+  # df-an: |- ( ( ph /\ ps ) <-> -. ( ph -> -. ps ) )
+  (arr df-an
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] and) (({[.ph] ([.ps] -.)} =>) -.)} iff) |-)))
+
+  # wo: wff ( ph \/ ps )
+  (arr wo
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (([.ph ps] or) wff)))
+
+  # df-or: |- ( ( ph \/ ps ) <-> ( -. ph -> ps ) )
+  (arr df-or
+    : ([ph ps.] {([.ph] wff) ([.ps] wff)})
+    -> ([ph ps.] (({([.ph ps] or) ({([.ph] -.) [.ps]} =>)} iff) |-)))
+
+  # wal: wff A. x ph
+  (arr wal
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (([.x ph] forall) wff)))
+
+  # cv: class x
+  (arr cv
+    : ([x.] {([.x] setvar)})
+    -> ([x.] (([.x] cv) class)))
+
+  # wceq: wff A = B
+  (arr wceq
+    : ([A B.] {([.A] class) ([.B] class)})
+    -> ([A B.] (([.A B] =) wff)))
+
+  # wex: wff E. x ph
+  (arr wex
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (([.x ph] exists) wff)))
+
+  # df-ex: |- ( E. x ph <-> -. A. x -. ph )
+  (arr df-ex
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (({([.x ph] exists) (({[.x] ([.ph] -.)} forall) -.)} iff) |-)))
+
+  # alnex: |- ( A. x -. ph <-> -. E. x ph )
+  (def alnex
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (({({[.x] ([.ph] -.)} forall) (([.x ph] exists) -.)} iff) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wex [p0.])
+    ([.h0] wn [p1.])
+    ([.p1 h1] wal [p2.])
+    ([.h0 h1] df-ex [p3.])
+    ([.p0 p2 p3] con2bii [p4.])
+    [.p4]})
+
+  # eximal: |- ( ( E. x ph -> ps ) <-> ( -. ps -> A. x -. ph ) )
+  (def eximal
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar)})
+    -> ([ph ps x.] (({({([.x ph] exists) [.ps]} =>) ({([.ps] -.) ({[.x] ([.ph] -.)} forall)} =>)} iff) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h2] wex [p0.])
+    ([.p0 h1] wi [p1.])
+    ([.h0] wn [p2.])
+    ([.p2 h2] wal [p3.])
+    ([.p3] wn [p4.])
+    ([.p4 h1] wi [p5.])
+    ([.h1] wn [p6.])
+    ([.p6 p3] wi [p7.])
+    ([.h0 h2] df-ex [p8.])
+    ([.p0 p4 h1 p8] imbi1i [p9.])
+    ([.p3 h1] con1b [p10.])
+    ([.p1 p5 p7 p9 p10] bitri [p11.])
+    [.p11]})
+
+  # ax-gen: |- A. x ph
+  (arr ax-gen
+    : ([ph x.] {([.ph] wff) ([.x] setvar) ([.ph] |-)})
+    -> ([ph x.] (([.x ph] forall) |-)))
+
+  # mpg: |- ps
+  (def mpg
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar) (({([.x ph] forall) [.ps]} =>) |-) ([.ph] |-)})
+    -> ([ph ps x.] ([.ps] |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h2] wal [p0.])
+    ([.h0 h2 h4] ax-gen [p1.])
+    ([.p0 h1 p1 h3] ax-mp [p2.])
+    [.p2]})
+
+  # ax-4: |- ( A. x ( ph -> ps ) -> ( A. x ph -> A. x ps ) )
+  (arr ax-4
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar)})
+    -> ([ph ps x.] (({({[.x] ([.ph ps] =>)} forall) ({([.x ph] forall) ([.x ps] forall)} =>)} =>) |-)))
+
+  # alim: |- ( A. x ( ph -> ps ) -> ( A. x ph -> A. x ps ) )
+  (def alim
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar)})
+    -> ([ph ps x.] (({({[.x] ([.ph ps] =>)} forall) ({([.x ph] forall) ([.x ps] forall)} =>)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1 h2] ax-4 [p0.])
+    [.p0]})
+
+  # al2im: |- ( A. x ( ph -> ( ps -> ch ) ) -> ( A. x ph -> ( A. x ps -> A. x ch ) ) )
+  (def al2im
+    : ([ph ps ch x.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.x] setvar)})
+    -> ([ph ps ch x.] (({({[.x] ({[.ph] ([.ps ch] =>)} =>)} forall) ({([.x ph] forall) ({([.x ps] forall) ([.x ch] forall)} =>)} =>)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h1 h2] wi [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.p1 h3] wal [p2.])
+    ([.h0 h3] wal [p3.])
+    ([.p0 h3] wal [p4.])
+    ([.h1 h3] wal [p5.])
+    ([.h2 h3] wal [p6.])
+    ([.p5 p6] wi [p7.])
+    ([.h0 p0 h3] alim [p8.])
+    ([.h1 h2 h3] alim [p9.])
+    ([.p2 p3 p4 p7 p8 p9] syl6 [p10.])
+    [.p10]})
+
+  # al2imi: |- ( A. x ph -> ( A. x ps -> A. x ch ) )
+  (def al2imi
+    : ([ph ps ch x.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.x] setvar) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch x.] (({([.x ph] forall) ({([.x ps] forall) ([.x ch] forall)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h1 h2] wi [p0.])
+    ([.h0 p0] wi [p1.])
+    ([.h0 h3] wal [p2.])
+    ([.h1 h3] wal [p3.])
+    ([.h2 h3] wal [p4.])
+    ([.p3 p4] wi [p5.])
+    ([.p2 p5] wi [p6.])
+    ([.h0 h1 h2 h3] al2im [p7.])
+    ([.p1 p6 h3 p7 h4] mpg [p8.])
+    [.p8]})
+
+  # albi: |- ( A. x ( ph <-> ps ) -> ( A. x ph <-> A. x ps ) )
+  (def albi
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar)})
+    -> ([ph ps x.] (({({[.x] ([.ph ps] iff)} forall) ({([.x ph] forall) ([.x ps] forall)} iff)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1] wb [p0.])
+    ([.p0 h2] wal [p1.])
+    ([.h0 h2] wal [p2.])
+    ([.h1 h2] wal [p3.])
+    ([.h0 h1] biimp [p4.])
+    ([.p0 h0 h1 h2 p4] al2imi [p5.])
+    ([.h0 h1] biimpr [p6.])
+    ([.p0 h1 h0 h2 p6] al2imi [p7.])
+    ([.p1 p2 p3 p5 p7] impbid [p8.])
+    [.p8]})
+
+  # albii: |- ( A. x ph <-> A. x ps )
+  (def albii
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar) (([.ph ps] iff) |-)})
+    -> ([ph ps x.] (({([.x ph] forall) ([.x ps] forall)} iff) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1] wb [p0.])
+    ([.h0 h2] wal [p1.])
+    ([.h1 h2] wal [p2.])
+    ([.p1 p2] wb [p3.])
+    ([.h0 h1 h2] albi [p4.])
+    ([.p0 p3 h2 p4 h3] mpg [p5.])
+    [.p5]})
+
+  # alex: |- ( A. x ph <-> -. E. x -. ph )
+  (def alex
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (({([.x ph] forall) (({[.x] ([.ph] -.)} exists) -.)} iff) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wal [p0.])
+    ([.h0] wn [p1.])
+    ([.p1] wn [p2.])
+    ([.p2 h1] wal [p3.])
+    ([.p1 h1] wex [p4.])
+    ([.p4] wn [p5.])
+    ([.h0] notnotb [p6.])
+    ([.h0 p2 h1 p6] albii [p7.])
+    ([.p1 h1] alnex [p8.])
+    ([.p0 p3 p5 p7 p8] bitri [p9.])
+    [.p9]})
+
+  # aleximi: |- ( A. x ph -> ( E. x ps -> E. x ch ) )
+  (def aleximi
+    : ([ph ps ch x.] {([.ph] wff) ([.ps] wff) ([.ch] wff) ([.x] setvar) (({[.ph] ([.ps ch] =>)} =>) |-)})
+    -> ([ph ps ch x.] (({([.x ph] forall) ({([.x ps] exists) ([.x ch] exists)} =>)} =>) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h3] wal [p0.])
+    ([.h2 h3] wex [p1.])
+    ([.h1 h3] wex [p2.])
+    ([.h2] wn [p3.])
+    ([.p3 h3] wal [p4.])
+    ([.h1] wn [p5.])
+    ([.p5 h3] wal [p6.])
+    ([.p1] wn [p7.])
+    ([.p2] wn [p8.])
+    ([.h0 h1 h2 h4] con3d [p9.])
+    ([.h0 p3 p5 h3 p9] al2imi [p10.])
+    ([.h2 h3] alnex [p11.])
+    ([.h1 h3] alnex [p12.])
+    ([.p0 p4 p6 p7 p8 p10 p11 p12] 3imtr3g [p13.])
+    ([.p0 p1 p2 p13] con4d [p14.])
+    [.p14]})
+
+  # exim: |- ( A. x ( ph -> ps ) -> ( E. x ph -> E. x ps ) )
+  (def exim
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar)})
+    -> ([ph ps x.] (({({[.x] ([.ph ps] =>)} forall) ({([.x ph] exists) ([.x ps] exists)} =>)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h1] wi [p0.])
+    ([.p0] id [p1.])
+    ([.p0 h0 h1 h2 p1] aleximi [p2.])
+    [.p2]})
+
+  # eximi: |- ( E. x ph -> E. x ps )
+  (def eximi
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar) (([.ph ps] =>) |-)})
+    -> ([ph ps x.] (({([.x ph] exists) ([.x ps] exists)} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h1] wi [p0.])
+    ([.h0 h2] wex [p1.])
+    ([.h1 h2] wex [p2.])
+    ([.p1 p2] wi [p3.])
+    ([.h0 h1 h2] exim [p4.])
+    ([.p0 p3 h2 p4 h3] mpg [p5.])
+    [.p5]})
+
+  # eximii: |- E. x ps
+  (def eximii
+    : ([ph ps x.] {([.ph] wff) ([.ps] wff) ([.x] setvar) (([.x ph] exists) |-) (([.ph ps] =>) |-)})
+    -> ([ph ps x.] (([.x ps] exists) |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h2] wex [p0.])
+    ([.h1 h2] wex [p1.])
+    ([.h0 h1 h2 h4] eximi [p2.])
+    ([.p0 p1 h3 p2] ax-mp [p3.])
+    [.p3]})
+
+  # ax-5: |- ( ph -> A. x ph )
+  # $d ph x
+  (arr ax-5 (dv (del sel))
+    : ([x ph.] {([.ph] wff) ([.x] setvar)})
+    -> ([x ph.] (({[.ph] ([.x ph] forall)} =>) |-)))
+
+  # ax5e: |- ( E. x ph -> ph )
+  # $d ph x
+  (def ax5e (dv (del sel))
+    : ([x ph.] {([.ph] wff) ([.x] setvar)})
+    -> ([x ph.] (({([.x ph] exists) [.ph]} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wex [p0.])
+    ([.p0 h0] wi [p1.])
+    ([.h0] wn [p2.])
+    ([.p2 h1] wal [p3.])
+    ([.p2 p3] wi [p4.])
+    ([.p2 h1] ax-5 [p5.])
+    ([.h0 h0 h1] eximal [p6.])
+    ([.p1 p4 p5 p6] mpbir [p7.])
+    [.p7]})
+
+  # exlimiv: |- ( E. x ph -> ps )
+  # $d ps x
+  (def exlimiv (dv ({[r0c0.]} {([.r0c0] _) ([.] sel)}))
+    : ([x ph ps.] {([.ph] wff) ([.ps] wff) ([.x] setvar) (([.ph ps] =>) |-)})
+    -> ([x ph ps.] (({([.x ph] exists) [.ps]} =>) |-))
+    = {[h0 h1 h2 h3.]
+    ([.h0 h2] wex [p0.])
+    ([.h1 h2] wex [p1.])
+    ([.h0 h1 h2 h3] eximi [p2.])
+    ([.h1 h2] ax5e [p3.])
+    ([.p0 p1 h1 p2 p3] syl [p4.])
+    [.p4]})
+
+  # exlimiiv: |- ps
+  # $d ps x
+  (def exlimiiv (dv ({[r0c0.]} {([.r0c0] _) ([.] sel)}))
+    : ([x ph ps.] {([.ph] wff) ([.ps] wff) ([.x] setvar) (([.ph ps] =>) |-) (([.x ph] exists) |-)})
+    -> ([x ph ps.] ([.ps] |-))
+    = {[h0 h1 h2 h3 h4.]
+    ([.h0 h2] wex [p0.])
+    ([.h0 h1 h2 h3] exlimiv [p1.])
+    ([.p0 h1 h4 p1] ax-mp [p2.])
+    [.p2]})
+
+  # weq: wff x = y
+  (def weq
+    : ([x y.] {([.x] setvar) ([.y] setvar)})
+    -> ([x y.] (({([.x] cv) ([.y] cv)} =) wff))
+    = {[h0 h1.]
+    ([.h0] cv [p0.])
+    ([.h1] cv [p1.])
+    ([.p0 p1] wceq [p2.])
+    [.p2]})
+
+  # ax-6: |- -. A. x -. x = y
+  (arr ax-6
+    : ([x y.] {([.x] setvar) ([.y] setvar)})
+    -> ([x y.] ((({[.x] (({([.x] cv) ([.y] cv)} =) -.)} forall) -.) |-)))
+
+  # ax6v: |- -. A. x -. x = y
+  # $d x y
+  (def ax6v (dv {del del})
+    : ([x y.] {([.x] setvar) ([.y] setvar)})
+    -> ([x y.] ((({[.x] (({([.x] cv) ([.y] cv)} =) -.)} forall) -.) |-))
+    = {[h0 h1.]
+    ([.h0 h1] ax-6 [p0.])
+    [.p0]})
+
+  # ax6ev: |- E. x x = y
+  # $d x y
+  (def ax6ev (dv {del del})
+    : ([x y.] {([.x] setvar) ([.y] setvar)})
+    -> ([x y.] (({[.x] ({([.x] cv) ([.y] cv)} =)} exists) |-))
+    = {[h0 h1.]
+    ([.h0 h1] weq [p0.])
+    ([.p0 h0] wex [p1.])
+    ([.p0] wn [p2.])
+    ([.p2 h0] wal [p3.])
+    ([.p3] wn [p4.])
+    ([.h0 h1] ax6v [p5.])
+    ([.p0 h0] df-ex [p6.])
+    ([.p1 p4 p5 p6] mpbir [p7.])
+    [.p7]})
+
+  # alequexv: |- ( A. x ( x = y -> ph ) -> E. x ph )
+  # $d x y
+  (def alequexv (dv ({_ _} sup))
+    : ([x y ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
+    -> ([x y ph.] (({({[.x] ({({([.x] cv) ([.y] cv)} =) [.ph]} =>)} forall) ([.x ph] exists)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h1 h2] weq [p0.])
+    ([.p0 h0] wi [p1.])
+    ([.p1 h1] wal [p2.])
+    ([.p0 h1] wex [p3.])
+    ([.h0 h1] wex [p4.])
+    ([.h1 h2] ax6ev [p5.])
+    ([.p0 h0 h1] exim [p6.])
+    ([.p2 p3 p4 p5 p6] mpi [p7.])
+    [.p7]})
+
+  # ax-7: |- ( x = y -> ( x = z -> y = z ) )
+  (arr ax-7
+    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([x y z.] (({({([.x] cv) ([.y] cv)} =) ({({([.x] cv) ([.z] cv)} =) ({([.y] cv) ([.z] cv)} =)} =>)} =>) |-)))
+
+  # equid: |- x = x
+  (def equid (dv del)
+    : ([x.] {([.x] setvar)})
+    -> ([x.] (({([.x] cv) ([.x] cv)} =) |-))
+    = {[h0.]
+    (fresh [dummy-y.])
+    ([.dummy-y h0] weq [p0.])
+    ([.h0 h0] weq [p1.])
+    ([.dummy-y h0 h0] ax-7 [p2.])
+    ([.p0 p1 p2] pm2.43i [p3.])
+    ([.dummy-y h0] ax6ev [p4.])
+    ([.p0 p1 dummy-y p3 p4] exlimiiv [p5.])
+    [.p5]})
+
+  # equcomiv: |- ( x = y -> y = x )
+  # $d x y
+  (def equcomiv (dv {del del})
+    : ([x y.] {([.x] setvar) ([.y] setvar)})
+    -> ([x y.] (({({([.x] cv) ([.y] cv)} =) ({([.y] cv) ([.x] cv)} =)} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] weq [p0.])
+    ([.h0 h0] weq [p1.])
+    ([.h1 h0] weq [p2.])
+    ([.h0] equid [p3.])
+    ([.h0 h1 h0] ax-7 [p4.])
+    ([.p0 p1 p2 p3 p4] mpi [p5.])
+    [.p5]})
+
+  # ax6evr: |- E. x y = x
+  # $d x y
+  (def ax6evr (dv {del del})
+    : ([x y.] {([.x] setvar) ([.y] setvar)})
+    -> ([x y.] (({[.x] ({([.y] cv) ([.x] cv)} =)} exists) |-))
+    = {[h0 h1.]
+    ([.h0 h1] weq [p0.])
+    ([.h1 h0] weq [p1.])
+    ([.h0 h1] ax6ev [p2.])
+    ([.h0 h1] equcomiv [p3.])
+    ([.p0 p1 h0 p2 p3] eximii [p4.])
+    [.p4]})
+
+  # wcel: wff A e. B
+  (arr wcel
+    : ([A B.] {([.A] class) ([.B] class)})
+    -> ([A B.] (([.A B] in) wff)))
+
+  # ax-8: |- ( x = y -> ( x e. z -> y e. z ) )
+  (arr ax-8
+    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([x y z.] (({({([.x] cv) ([.y] cv)} =) ({({([.x] cv) ([.z] cv)} in) ({([.y] cv) ([.z] cv)} in)} =>)} =>) |-)))
+
+  # ax-9: |- ( x = y -> ( z e. x -> z e. y ) )
+  (arr ax-9
+    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([x y z.] (({({([.x] cv) ([.y] cv)} =) ({({([.z] cv) ([.x] cv)} in) ({([.z] cv) ([.y] cv)} in)} =>)} =>) |-)))
+
+  # ax-10: |- ( -. A. x ph -> A. x -. A. x ph )
+  (arr ax-10
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (({(([.x ph] forall) -.) ({[.x] (([.x ph] forall) -.)} forall)} =>) |-)))
+
+  # ax-11: |- ( A. x A. y ph -> A. y A. x ph )
+  (arr ax-11
+    : ([ph x y.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
+    -> ([ph x y.] (({({[.x] ([.y ph] forall)} forall) ({[.y] ([.x ph] forall)} forall)} =>) |-)))
+
+  # ax-12: |- ( x = y -> ( A. y ph -> A. x ( x = y -> ph ) ) )
+  (arr ax-12
+    : ([ph x y.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
+    -> ([ph x y.] (({({([.x] cv) ([.y] cv)} =) ({([.y ph] forall) ({[.x] ({({([.x] cv) ([.y] cv)} =) [.ph]} =>)} forall)} =>)} =>) |-)))
+
+  # ax12v: |- ( x = y -> ( ph -> A. x ( x = y -> ph ) ) )
+  # $d ph y, x y
+  (def ax12v (dv ({_ del} _))
+    : ([x y ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
+    -> ([x y ph.] (({({([.x] cv) ([.y] cv)} =) ({[.ph] ({[.x] ({({([.x] cv) ([.y] cv)} =) [.ph]} =>)} forall)} =>)} =>) |-))
+    = {[h0 h1 h2.]
+    ([.h0 h2] wal [p0.])
+    ([.h1 h2] weq [p1.])
+    ([.p1 h0] wi [p2.])
+    ([.p2 h1] wal [p3.])
+    ([.h0 h2] ax-5 [p4.])
+    ([.h0 h1 h2] ax-12 [p5.])
+    ([.h0 p0 p1 p3 p4 p5] syl5 [p6.])
+    [.p6]})
+
+  # 19.8a: |- ( ph -> E. x ph )
+  (def 19.8a (dv _)
+    : ([x ph.] {([.ph] wff) ([.x] setvar)})
+    -> ([x ph.] (({[.ph] ([.x ph] exists)} =>) |-))
+    = {[h0 h1.]
+    (fresh [dummy-y.])
+    ([.h1 dummy-y] weq [p0.])
+    ([.h0 h1] wex [p1.])
+    ([.h0 p1] wi [p2.])
+    ([.p0 h0] wi [p3.])
+    ([.p3 h1] wal [p4.])
+    ([.h0 h1 dummy-y] ax12v [p5.])
+    ([.h0 h1 dummy-y] alequexv [p6.])
+    ([.p0 h0 p4 p1 p5 p6] syl6 [p7.])
+    ([.dummy-y h1] ax6evr [p8.])
+    ([.p0 p2 dummy-y p7 p8] exlimiiv [p9.])
+    [.p9]})
+
+  # sp: |- ( A. x ph -> ph )
+  (def sp (dv _)
+    : ([x ph.] {([.ph] wff) ([.x] setvar)})
+    -> ([x ph.] (({([.x ph] forall) [.ph]} =>) |-))
+    = {[h0 h1.]
+    ([.h0 h1] wal [p0.])
+    ([.h0] wn [p1.])
+    ([.p1 h1] wex [p2.])
+    ([.p2] wn [p3.])
+    ([.h0 h1] alex [p4.])
+    ([.p1 h1] 19.8a [p5.])
+    ([.h0 p2 p5] con1i [p6.])
+    ([.p0 p3 h0 p4 p6] sylbi [p7.])
+    [.p7]})
+
+  # ax-13: |- ( -. x = y -> ( y = z -> A. x y = z ) )
+  (arr ax-13
+    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([x y z.] (({(({([.x] cv) ([.y] cv)} =) -.) ({({([.y] cv) ([.z] cv)} =) ({[.x] ({([.y] cv) ([.z] cv)} =)} forall)} =>)} =>) |-)))
+
+  # ax-ext: |- ( A. z ( z e. x <-> z e. y ) -> x = y )
+  # $d x y, x z, y z
+  (arr ax-ext (dv {del del del})
+    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([x y z.] (({({[.z] ({({([.z] cv) ([.x] cv)} in) ({([.z] cv) ([.y] cv)} in)} iff)} forall) ({([.x] cv) ([.y] cv)} =)} =>) |-)))
+
+  # wne: wff A =/= B
+  (arr wne
+    : ([A B.] {([.A] class) ([.B] class)})
+    -> ([A B.] (([.A B] ne) wff)))
+
+  # wral: wff A. x e. A ph
+  (arr wral
+    : ([ph x A.] {([.ph] wff) ([.x] setvar) ([.A] class)})
+    -> ([ph x A.] (([.x A ph] rforall) wff)))
+
+  # wss: wff A C_ B
+  (arr wss
+    : ([A B.] {([.A] class) ([.B] class)})
+    -> ([A B.] (([.A B] subset) wff)))
+
+  # c0: class (/)
+  (arr c0
+    : ([.] {})
+    -> ([.] (empty class)))
+
+  # wbr: wff A R B
+  (arr wbr
+    : ([A B R.] {([.A] class) ([.B] class) ([.R] class)})
+    -> ([A B R.] (([.A R B] rel) wff)))
+
+  # ax-rep: |- ( A. w E. y A. z ( A. y ph -> z = y ) -> E. y A. z ( z e. y <-> E. w ( w e. x /\ A. y ph ) ) )
+  # $d w x, w y, w z, x y, x z, y z
+  (arr ax-rep (dv ({_ _ _ _} ({_ ({_ sup} sup)} sup)))
+    : ([x y z w ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([x y z w ph.] (({({[.w] ({[.y] ({[.z] ({([.y ph] forall) ({([.z] cv) ([.y] cv)} =)} =>)} forall)} exists)} forall) ({[.y] ({[.z] ({({([.z] cv) ([.y] cv)} in) ({[.w] ({({([.w] cv) ([.x] cv)} in) ([.y ph] forall)} and)} exists)} iff)} forall)} exists)} =>) |-)))
+
+  # ax-sep: |- E. y A. x ( x e. y <-> ( x e. z /\ ph ) )
+  # $d ph y, ph z, x y, x z, y z
+  (arr ax-sep (dv ({_ del del} _))
+    : ([x y z ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([x y z ph.] (({[.y] ({[.x] ({({([.x] cv) ([.y] cv)} in) ({({([.x] cv) ([.z] cv)} in) [.ph]} and)} iff)} forall)} exists) |-)))
+
+  # ax-nul: |- E. x A. y -. y e. x
+  # $d x y
+  (arr ax-nul (dv {del del})
+    : ([x y.] {([.x] setvar) ([.y] setvar)})
+    -> ([x y.] (({[.x] ({[.y] (({([.y] cv) ([.x] cv)} in) -.)} forall)} exists) |-)))
+
+  # ax-pow: |- E. y A. z ( A. w ( w e. z -> w e. x ) -> z e. y )
+  # $d w x, w y, w z, x y, x z, y z
+  (arr ax-pow (dv {del del del del})
+    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([x y z w.] (({[.y] ({[.z] ({({[.w] ({({([.w] cv) ([.z] cv)} in) ({([.w] cv) ([.x] cv)} in)} =>)} forall) ({([.z] cv) ([.y] cv)} in)} =>)} forall)} exists) |-)))
+
+  # ax-pr: |- E. z A. w ( ( w = x \/ w = y ) -> w e. z )
+  # $d w x, w y, w z, x z, y z
+  (arr ax-pr (dv ({del del} {sel sel}))
+    : ([z w x y.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([z w x y.] (({[.z] ({[.w] ({({({([.w] cv) ([.x] cv)} =) ({([.w] cv) ([.y] cv)} =)} or) ({([.w] cv) ([.z] cv)} in)} =>)} forall)} exists) |-)))
+
+  # cdm: class dom A
+  (arr cdm
+    : ([A.] {([.A] class)})
+    -> ([A.] (([.A] dom) class)))
+
+  # crn: class ran A
+  (arr crn
+    : ([A.] {([.A] class)})
+    -> ([A.] (([.A] ran) class)))
+
+  # csuc: class suc A
+  (arr csuc
+    : ([A.] {([.A] class)})
+    -> ([A.] (([.A] suc) class)))
+
+  # cfv: class ( F ` A )
+  (arr cfv
+    : ([A F.] {([.A] class) ([.F] class)})
+    -> ([A F.] (([.F A] apply) class)))
+
+  # ax-un: |- E. y A. z ( E. w ( z e. w /\ w e. x ) -> z e. y )
+  # $d w x, w y, w z, x y, x z, y z
+  (arr ax-un (dv {del del del del})
+    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([x y z w.] (({[.y] ({[.z] ({({[.w] ({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.x] cv)} in)} and)} exists) ({([.z] cv) ([.y] cv)} in)} =>)} forall)} exists) |-)))
+
+  # com: class _om
+  (arr com
+    : ([.] {})
+    -> ([.] (omega class)))
+
+  # cen: class ~~
+  (arr cen
+    : ([.] {})
+    -> ([.] (equinumerosity class)))
+
+  # ax-reg: |- ( E. y y e. x -> E. y ( y e. x /\ A. z ( z e. y -> -. z e. x ) ) )
+  # $d x y, x z, y z
+  (arr ax-reg (dv {del del del})
+    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([x y z.] (({({[.y] ({([.y] cv) ([.x] cv)} in)} exists) ({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] ({({([.z] cv) ([.y] cv)} in) (({([.z] cv) ([.x] cv)} in) -.)} =>)} forall)} and)} exists)} =>) |-)))
+
+  # ax-inf: |- E. y ( x e. y /\ A. z ( z e. y -> E. w ( z e. w /\ w e. y ) ) )
+  # $d w x, w y, w z, x y, x z, y z
+  (arr ax-inf (dv {del del del del})
+    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([x y z w.] (({[.y] ({({([.x] cv) ([.y] cv)} in) ({[.z] ({({([.z] cv) ([.y] cv)} in) ({[.w] ({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.y] cv)} in)} and)} exists)} =>)} forall)} and)} exists) |-)))
+
+  # ax-inf2: |- E. x ( E. y ( y e. x /\ A. z -. z e. y ) /\ A. y ( y e. x -> E. z ( z e. x /\ A. w ( w e. z <-> ( w e. y \/ w = y ) ) ) ) )
+  # $d w x, w y, w z, x y, x z, y z
+  (arr ax-inf2 (dv {del del del del})
+    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([x y z w.] (({[.x] ({({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] (({([.z] cv) ([.y] cv)} in) -.)} forall)} and)} exists) ({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] ({({([.z] cv) ([.x] cv)} in) ({[.w] ({({([.w] cv) ([.z] cv)} in) ({({([.w] cv) ([.y] cv)} in) ({([.w] cv) ([.y] cv)} =)} or)} iff)} forall)} and)} exists)} =>)} forall)} and)} exists) |-)))
+
+  # ax-cc: |- ( x ~~ _om -> E. f A. z e. x ( z =/= (/) -> ( f ` z ) e. z ) )
+  # $d f x, f z, x z
+  (arr ax-cc (dv {del del del})
+    : ([x z f.] {([.x] setvar) ([.z] setvar) ([.f] setvar)})
+    -> ([x z f.] (({({([.x] cv) equinumerosity omega} rel) ({[.f] ({[.z] ([.x] cv) ({({([.z] cv) empty} ne) ({({([.f] cv) ([.z] cv)} apply) ([.z] cv)} in)} =>)} rforall)} exists)} =>) |-)))
+
+  # ax-dc: |- ( ( E. y E. z y x z /\ ran x C_ dom x ) -> E. f A. n e. _om ( f ` n ) x ( f ` suc n ) )
+  # $d f n, f x, f y, f z, n x, n y, n z, x y, x z, y z
+  (arr ax-dc (dv {del del del del del})
+    : ([x y z f n.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.f] setvar) ([.n] setvar)})
+    -> ([x y z f n.] (({({({[.y] ({[.z] ({([.y] cv) ([.x] cv) ([.z] cv)} rel)} exists)} exists) ({(([.x] cv) ran) (([.x] cv) dom)} subset)} and) ({[.f] ({[.n] omega ({({([.f] cv) ([.n] cv)} apply) ([.x] cv) ({([.f] cv) (([.n] cv) suc)} apply)} rel)} rforall)} exists)} =>) |-)))
+
+  # ax-ac: |- E. y A. z A. w ( ( z e. w /\ w e. x ) -> E. v A. u ( E. t ( ( u e. w /\ w e. t ) /\ ( u e. t /\ t e. y ) ) <-> u = v ) )
+  # $d t u, t v, t w, t x, t y, t z, u v, u w, u x, u y, u z, v w, v x, v y, v z, w x, w y, w z, x y, x z, y z
+  (arr ax-ac (dv {del del del del del del del})
+    : ([x y z w v u t.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar) ([.v] setvar) ([.u] setvar) ([.t] setvar)})
+    -> ([x y z w v u t.] (({[.y] ({[.z] ({[.w] ({({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.x] cv)} in)} and) ({[.v] ({[.u] ({({[.t] ({({({([.u] cv) ([.w] cv)} in) ({([.w] cv) ([.t] cv)} in)} and) ({({([.u] cv) ([.t] cv)} in) ({([.t] cv) ([.y] cv)} in)} and)} and)} exists) ({([.u] cv) ([.v] cv)} =)} iff)} forall)} exists)} =>)} forall)} forall)} exists) |-)))
+
+  # ax-ac2: |- E. y A. z E. v A. u ( ( y e. x /\ ( z e. y -> ( ( v e. x /\ -. y = v ) /\ z e. v ) ) ) \/ ( -. y e. x /\ ( z e. x -> ( ( v e. z /\ v e. y ) /\ ( ( u e. z /\ u e. y ) -> u = v ) ) ) ) )
+  # $d u v, u x, u y, u z, v x, v y, v z, x y, x z, y z
+  (arr ax-ac2 (dv {del del del del del})
+    : ([x y z v u.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.v] setvar) ([.u] setvar)})
+    -> ([x y z v u.] (({[.y] ({[.z] ({[.v] ({[.u] ({({({([.y] cv) ([.x] cv)} in) ({({([.z] cv) ([.y] cv)} in) ({({({([.v] cv) ([.x] cv)} in) (({([.y] cv) ([.v] cv)} =) -.)} and) ({([.z] cv) ([.v] cv)} in)} and)} =>)} and) ({(({([.y] cv) ([.x] cv)} in) -.) ({({([.z] cv) ([.x] cv)} in) ({({({([.v] cv) ([.z] cv)} in) ({([.v] cv) ([.y] cv)} in)} and) ({({({([.u] cv) ([.z] cv)} in) ({([.u] cv) ([.y] cv)} in)} and) ({([.u] cv) ([.v] cv)} =)} =>)} and)} =>)} and)} or)} forall)} exists)} forall)} exists) |-)))
+})
