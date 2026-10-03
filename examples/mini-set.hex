@@ -1,7 +1,8 @@
 # Foundational logic/ZFC axioms and the proof of sp from Metamath's set.mm.
 # Source: local set.mm (CC0, https://github.com/metamath/set.mm).
 # SHA-256: e3a11bb9cc3d7d85ec3eed51efab405e217e622b212651b403f553b54d74fdd3
-# Check every proof: cargo run -- check examples/set.hex
+# Regenerate: python3 scripts/translate_metamath.py set.mm --mini
+# Check every proof: cargo run -- check examples/mini-set.hex
 #
 # Scope: the 29 foundational ax-* declarations through ax-ac2, including
 # redundant variants and weaker choice axioms; no ax-groth or mathbox axioms.
@@ -15,12 +16,11 @@
 # Each declaration's comment gives the original Metamath statement and $d pairs.
 # h0, h1, ... are its hypotheses in Metamath order; p0, p1, ... are proof steps.
 #
-# DV annotations order syntax metavariables as B + C. Set variables constrained
-# by $d are bare (B); an ar edge permits occurrence in a formula (C). Bare
-# variables must remain distinct. equid, 19.8a and sp also declare x bare, as
-# required by their proofs. In particular, sp's (dv _) ALLOWS x to occur in ph.
-# ax7v/ax7v1/ax7v2 are inlined to ax-7: these aliases only add partial pairwise
-# distinctness, which a single B/C annotation cannot express in general.
+# DV annotations order syntax metavariables as B + C. An ar edge permits
+# occurrence of a bare variable (B) in an ordinary metavariable (C). Derived
+# interfaces use the full translator's proof-based bareness inference; redundant
+# source $d conditions need not become annotations. sp needs no DV annotation.
+# ax7v/ax7v1/ax7v2 are inlined to ax-7, preserving the original fragment's scope.
 # fresh introduces a local set-variable hypothesis, not a provability axiom;
 # its uses in equid and 19.8a discharge the original dummy-variable conditions.
 
@@ -1730,7 +1730,7 @@
 
   # ax6v: |- -. A. x -. x = y
   # $d x y
-  (def ax6v (dv {del del})
+  (def ax6v
     : ([x y.] {([.x] setvar) ([.y] setvar)})
     -> ([x y.] ((({[.x] (({([.x] cv) ([.y] cv)} =) -.)} forall) -.) |-))
     = {[h0 h1.]
@@ -1739,7 +1739,7 @@
 
   # ax6ev: |- E. x x = y
   # $d x y
-  (def ax6ev (dv {del del})
+  (def ax6ev
     : ([x y.] {([.x] setvar) ([.y] setvar)})
     -> ([x y.] (({[.x] ({([.x] cv) ([.y] cv)} =)} exists) |-))
     = {[h0 h1.]
@@ -1755,9 +1755,9 @@
 
   # alequexv: |- ( A. x ( x = y -> ph ) -> E. x ph )
   # $d x y
-  (def alequexv (dv ({_ _} sup))
-    : ([x y ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
-    -> ([x y ph.] (({({[.x] ({({([.x] cv) ([.y] cv)} =) [.ph]} =>)} forall) ([.x ph] exists)} =>) |-))
+  (def alequexv
+    : ([ph x y.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
+    -> ([ph x y.] (({({[.x] ({({([.x] cv) ([.y] cv)} =) [.ph]} =>)} forall) ([.x ph] exists)} =>) |-))
     = {[h0 h1 h2.]
     ([.h1 h2] weq [p0.])
     ([.p0 h0] wi [p1.])
@@ -1775,22 +1775,22 @@
     -> ([x y z.] (({({([.x] cv) ([.y] cv)} =) ({({([.x] cv) ([.z] cv)} =) ({([.y] cv) ([.z] cv)} =)} =>)} =>) |-)))
 
   # equid: |- x = x
-  (def equid (dv del)
+  (def equid
     : ([x.] {([.x] setvar)})
     -> ([x.] (({([.x] cv) ([.x] cv)} =) |-))
     = {[h0.]
-    (fresh [dummy-y.])
-    ([.dummy-y h0] weq [p0.])
-    ([.h0 h0] weq [p1.])
-    ([.dummy-y h0 h0] ax-7 [p2.])
-    ([.p0 p1 p2] pm2.43i [p3.])
-    ([.dummy-y h0] ax6ev [p4.])
-    ([.p0 p1 dummy-y p3 p4] exlimiiv [p5.])
-    [.p5]})
+    (fresh [dummy-0.])
+    ([.dummy-0 h0] weq [p1.])
+    ([.h0 h0] weq [p2.])
+    ([.dummy-0 h0 h0] ax-7 [p3.])
+    ([.p1 p2 p3] pm2.43i [p4.])
+    ([.dummy-0 h0] ax6ev [p5.])
+    ([.p1 p2 dummy-0 p4 p5] exlimiiv [p6.])
+    [.p6]})
 
   # equcomiv: |- ( x = y -> y = x )
   # $d x y
-  (def equcomiv (dv {del del})
+  (def equcomiv
     : ([x y.] {([.x] setvar) ([.y] setvar)})
     -> ([x y.] (({({([.x] cv) ([.y] cv)} =) ({([.y] cv) ([.x] cv)} =)} =>) |-))
     = {[h0 h1.]
@@ -1804,7 +1804,7 @@
 
   # ax6evr: |- E. x y = x
   # $d x y
-  (def ax6evr (dv {del del})
+  (def ax6evr
     : ([x y.] {([.x] setvar) ([.y] setvar)})
     -> ([x y.] (({[.x] ({([.y] cv) ([.x] cv)} =)} exists) |-))
     = {[h0 h1.]
@@ -1847,9 +1847,9 @@
 
   # ax12v: |- ( x = y -> ( ph -> A. x ( x = y -> ph ) ) )
   # $d ph y, x y
-  (def ax12v (dv ({_ del} _))
-    : ([x y ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
-    -> ([x y ph.] (({({([.x] cv) ([.y] cv)} =) ({[.ph] ({[.x] ({({([.x] cv) ([.y] cv)} =) [.ph]} =>)} forall)} =>)} =>) |-))
+  (def ax12v (dv ({del} {sel sel}))
+    : ([y ph x.] {([.ph] wff) ([.x] setvar) ([.y] setvar)})
+    -> ([y ph x.] (({({([.x] cv) ([.y] cv)} =) ({[.ph] ({[.x] ({({([.x] cv) ([.y] cv)} =) [.ph]} =>)} forall)} =>)} =>) |-))
     = {[h0 h1 h2.]
     ([.h0 h2] wal [p0.])
     ([.h1 h2] weq [p1.])
@@ -1861,27 +1861,27 @@
     [.p6]})
 
   # 19.8a: |- ( ph -> E. x ph )
-  (def 19.8a (dv _)
-    : ([x ph.] {([.ph] wff) ([.x] setvar)})
-    -> ([x ph.] (({[.ph] ([.x ph] exists)} =>) |-))
+  (def 19.8a
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (({[.ph] ([.x ph] exists)} =>) |-))
     = {[h0 h1.]
-    (fresh [dummy-y.])
-    ([.h1 dummy-y] weq [p0.])
-    ([.h0 h1] wex [p1.])
-    ([.h0 p1] wi [p2.])
-    ([.p0 h0] wi [p3.])
-    ([.p3 h1] wal [p4.])
-    ([.h0 h1 dummy-y] ax12v [p5.])
-    ([.h0 h1 dummy-y] alequexv [p6.])
-    ([.p0 h0 p4 p1 p5 p6] syl6 [p7.])
-    ([.dummy-y h1] ax6evr [p8.])
-    ([.p0 p2 dummy-y p7 p8] exlimiiv [p9.])
-    [.p9]})
+    (fresh [dummy-0.])
+    ([.h1 dummy-0] weq [p1.])
+    ([.h0 h1] wex [p2.])
+    ([.h0 p2] wi [p3.])
+    ([.p1 h0] wi [p4.])
+    ([.p4 h1] wal [p5.])
+    ([.h0 h1 dummy-0] ax12v [p6.])
+    ([.h0 h1 dummy-0] alequexv [p7.])
+    ([.p1 h0 p5 p2 p6 p7] syl6 [p8.])
+    ([.dummy-0 h1] ax6evr [p9.])
+    ([.p1 p3 dummy-0 p8 p9] exlimiiv [p10.])
+    [.p10]})
 
   # sp: |- ( A. x ph -> ph )
-  (def sp (dv _)
-    : ([x ph.] {([.ph] wff) ([.x] setvar)})
-    -> ([x ph.] (({([.x ph] forall) [.ph]} =>) |-))
+  (def sp
+    : ([ph x.] {([.ph] wff) ([.x] setvar)})
+    -> ([ph x.] (({([.x ph] forall) [.ph]} =>) |-))
     = {[h0 h1.]
     ([.h0 h1] wal [p0.])
     ([.h0] wn [p1.])
@@ -1900,9 +1900,9 @@
 
   # ax-ext: |- ( A. z ( z e. x <-> z e. y ) -> x = y )
   # $d x y, x z, y z
-  (arr ax-ext (dv {del del del})
-    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
-    -> ([x y z.] (({({[.z] ({({([.z] cv) ([.x] cv)} in) ({([.z] cv) ([.y] cv)} in)} iff)} forall) ({([.x] cv) ([.y] cv)} =)} =>) |-)))
+  (arr ax-ext (dv ({del del} sel))
+    : ([y z x.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([y z x.] (({({[.z] ({({([.z] cv) ([.x] cv)} in) ({([.z] cv) ([.y] cv)} in)} iff)} forall) ({([.x] cv) ([.y] cv)} =)} =>) |-)))
 
   # wne: wff A =/= B
   (arr wne
@@ -1931,27 +1931,27 @@
 
   # ax-rep: |- ( A. w E. y A. z ( A. y ph -> z = y ) -> E. y A. z ( z e. y <-> E. w ( w e. x /\ A. y ph ) ) )
   # $d w x, w y, w z, x y, x z, y z
-  (arr ax-rep (dv ({_ _ _ _} ({_ ({_ sup} sup)} sup)))
-    : ([x y z w ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
-    -> ([x y z w ph.] (({({[.w] ({[.y] ({[.z] ({([.y ph] forall) ({([.z] cv) ([.y] cv)} =)} =>)} forall)} exists)} forall) ({[.y] ({[.z] ({({([.z] cv) ([.y] cv)} in) ({[.w] ({({([.w] cv) ([.x] cv)} in) ([.y ph] forall)} and)} exists)} iff)} forall)} exists)} =>) |-)))
+  (arr ax-rep (dv ({[r0c0.] [r1c0.] [r2c0.]} {([.r0c0 r1c0 r2c0] ({_ ({_ _} sup)} sup)) ([.] sel)}))
+    : ([y z w ph x.] {([.ph] wff) ([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([y z w ph x.] (({({[.w] ({[.y] ({[.z] ({([.y ph] forall) ({([.z] cv) ([.y] cv)} =)} =>)} forall)} exists)} forall) ({[.y] ({[.z] ({({([.z] cv) ([.y] cv)} in) ({[.w] ({({([.w] cv) ([.x] cv)} in) ([.y ph] forall)} and)} exists)} iff)} forall)} exists)} =>) |-)))
 
   # ax-sep: |- E. y A. x ( x e. y <-> ( x e. z /\ ph ) )
   # $d ph y, ph z, x y, x z, y z
-  (arr ax-sep (dv ({_ del del} _))
-    : ([x y z ph.] {([.ph] wff) ([.x] setvar) ([.y] setvar) ([.z] setvar)})
-    -> ([x y z ph.] (({[.y] ({[.x] ({({([.x] cv) ([.y] cv)} in) ({({([.x] cv) ([.z] cv)} in) [.ph]} and)} iff)} forall)} exists) |-)))
+  (arr ax-sep (dv ({del del} {sel sel}))
+    : ([y z ph x.] {([.ph] wff) ([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([y z ph x.] (({[.y] ({[.x] ({({([.x] cv) ([.y] cv)} in) ({({([.x] cv) ([.z] cv)} in) [.ph]} and)} iff)} forall)} exists) |-)))
 
   # ax-nul: |- E. x A. y -. y e. x
   # $d x y
-  (arr ax-nul (dv {del del})
-    : ([x y.] {([.x] setvar) ([.y] setvar)})
-    -> ([x y.] (({[.x] ({[.y] (({([.y] cv) ([.x] cv)} in) -.)} forall)} exists) |-)))
+  (arr ax-nul (dv (del sel))
+    : ([y x.] {([.x] setvar) ([.y] setvar)})
+    -> ([y x.] (({[.x] ({[.y] (({([.y] cv) ([.x] cv)} in) -.)} forall)} exists) |-)))
 
   # ax-pow: |- E. y A. z ( A. w ( w e. z -> w e. x ) -> z e. y )
   # $d w x, w y, w z, x y, x z, y z
-  (arr ax-pow (dv {del del del del})
-    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
-    -> ([x y z w.] (({[.y] ({[.z] ({({[.w] ({({([.w] cv) ([.z] cv)} in) ({([.w] cv) ([.x] cv)} in)} =>)} forall) ({([.z] cv) ([.y] cv)} in)} =>)} forall)} exists) |-)))
+  (arr ax-pow (dv ({del del del} sel))
+    : ([y z w x.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([y z w x.] (({[.y] ({[.z] ({({[.w] ({({([.w] cv) ([.z] cv)} in) ({([.w] cv) ([.x] cv)} in)} =>)} forall) ({([.z] cv) ([.y] cv)} in)} =>)} forall)} exists) |-)))
 
   # ax-pr: |- E. z A. w ( ( w = x \/ w = y ) -> w e. z )
   # $d w x, w y, w z, x z, y z
@@ -1981,9 +1981,9 @@
 
   # ax-un: |- E. y A. z ( E. w ( z e. w /\ w e. x ) -> z e. y )
   # $d w x, w y, w z, x y, x z, y z
-  (arr ax-un (dv {del del del del})
-    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
-    -> ([x y z w.] (({[.y] ({[.z] ({({[.w] ({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.x] cv)} in)} and)} exists) ({([.z] cv) ([.y] cv)} in)} =>)} forall)} exists) |-)))
+  (arr ax-un (dv ({del del del} sel))
+    : ([y z w x.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([y z w x.] (({[.y] ({[.z] ({({[.w] ({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.x] cv)} in)} and)} exists) ({([.z] cv) ([.y] cv)} in)} =>)} forall)} exists) |-)))
 
   # com: class _om
   (arr com
@@ -1997,43 +1997,43 @@
 
   # ax-reg: |- ( E. y y e. x -> E. y ( y e. x /\ A. z ( z e. y -> -. z e. x ) ) )
   # $d x y, x z, y z
-  (arr ax-reg (dv {del del del})
-    : ([x y z.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
-    -> ([x y z.] (({({[.y] ({([.y] cv) ([.x] cv)} in)} exists) ({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] ({({([.z] cv) ([.y] cv)} in) (({([.z] cv) ([.x] cv)} in) -.)} =>)} forall)} and)} exists)} =>) |-)))
+  (arr ax-reg (dv ({del del} sel))
+    : ([y z x.] {([.x] setvar) ([.y] setvar) ([.z] setvar)})
+    -> ([y z x.] (({({[.y] ({([.y] cv) ([.x] cv)} in)} exists) ({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] ({({([.z] cv) ([.y] cv)} in) (({([.z] cv) ([.x] cv)} in) -.)} =>)} forall)} and)} exists)} =>) |-)))
 
   # ax-inf: |- E. y ( x e. y /\ A. z ( z e. y -> E. w ( z e. w /\ w e. y ) ) )
   # $d w x, w y, w z, x y, x z, y z
-  (arr ax-inf (dv {del del del del})
-    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
-    -> ([x y z w.] (({[.y] ({({([.x] cv) ([.y] cv)} in) ({[.z] ({({([.z] cv) ([.y] cv)} in) ({[.w] ({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.y] cv)} in)} and)} exists)} =>)} forall)} and)} exists) |-)))
+  (arr ax-inf (dv ({del del del} sel))
+    : ([y z w x.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([y z w x.] (({[.y] ({({([.x] cv) ([.y] cv)} in) ({[.z] ({({([.z] cv) ([.y] cv)} in) ({[.w] ({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.y] cv)} in)} and)} exists)} =>)} forall)} and)} exists) |-)))
 
   # ax-inf2: |- E. x ( E. y ( y e. x /\ A. z -. z e. y ) /\ A. y ( y e. x -> E. z ( z e. x /\ A. w ( w e. z <-> ( w e. y \/ w = y ) ) ) ) )
   # $d w x, w y, w z, x y, x z, y z
-  (arr ax-inf2 (dv {del del del del})
-    : ([x y z w.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
-    -> ([x y z w.] (({[.x] ({({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] (({([.z] cv) ([.y] cv)} in) -.)} forall)} and)} exists) ({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] ({({([.z] cv) ([.x] cv)} in) ({[.w] ({({([.w] cv) ([.z] cv)} in) ({({([.w] cv) ([.y] cv)} in) ({([.w] cv) ([.y] cv)} =)} or)} iff)} forall)} and)} exists)} =>)} forall)} and)} exists) |-)))
+  (arr ax-inf2 (dv ({del del del} sel))
+    : ([y z w x.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar)})
+    -> ([y z w x.] (({[.x] ({({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] (({([.z] cv) ([.y] cv)} in) -.)} forall)} and)} exists) ({[.y] ({({([.y] cv) ([.x] cv)} in) ({[.z] ({({([.z] cv) ([.x] cv)} in) ({[.w] ({({([.w] cv) ([.z] cv)} in) ({({([.w] cv) ([.y] cv)} in) ({([.w] cv) ([.y] cv)} =)} or)} iff)} forall)} and)} exists)} =>)} forall)} and)} exists) |-)))
 
   # ax-cc: |- ( x ~~ _om -> E. f A. z e. x ( z =/= (/) -> ( f ` z ) e. z ) )
   # $d f x, f z, x z
-  (arr ax-cc (dv {del del del})
-    : ([x z f.] {([.x] setvar) ([.z] setvar) ([.f] setvar)})
-    -> ([x z f.] (({({([.x] cv) equinumerosity omega} rel) ({[.f] ({[.z] ([.x] cv) ({({([.z] cv) empty} ne) ({({([.f] cv) ([.z] cv)} apply) ([.z] cv)} in)} =>)} rforall)} exists)} =>) |-)))
+  (arr ax-cc (dv ({del del} sel))
+    : ([z f x.] {([.x] setvar) ([.z] setvar) ([.f] setvar)})
+    -> ([z f x.] (({({([.x] cv) equinumerosity omega} rel) ({[.f] ({[.z] ([.x] cv) ({({([.z] cv) empty} ne) ({({([.f] cv) ([.z] cv)} apply) ([.z] cv)} in)} =>)} rforall)} exists)} =>) |-)))
 
   # ax-dc: |- ( ( E. y E. z y x z /\ ran x C_ dom x ) -> E. f A. n e. _om ( f ` n ) x ( f ` suc n ) )
   # $d f n, f x, f y, f z, n x, n y, n z, x y, x z, y z
-  (arr ax-dc (dv {del del del del del})
-    : ([x y z f n.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.f] setvar) ([.n] setvar)})
-    -> ([x y z f n.] (({({({[.y] ({[.z] ({([.y] cv) ([.x] cv) ([.z] cv)} rel)} exists)} exists) ({(([.x] cv) ran) (([.x] cv) dom)} subset)} and) ({[.f] ({[.n] omega ({({([.f] cv) ([.n] cv)} apply) ([.x] cv) ({([.f] cv) (([.n] cv) suc)} apply)} rel)} rforall)} exists)} =>) |-)))
+  (arr ax-dc (dv ({del del del del} sel))
+    : ([y z f n x.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.f] setvar) ([.n] setvar)})
+    -> ([y z f n x.] (({({({[.y] ({[.z] ({([.y] cv) ([.x] cv) ([.z] cv)} rel)} exists)} exists) ({(([.x] cv) ran) (([.x] cv) dom)} subset)} and) ({[.f] ({[.n] omega ({({([.f] cv) ([.n] cv)} apply) ([.x] cv) ({([.f] cv) (([.n] cv) suc)} apply)} rel)} rforall)} exists)} =>) |-)))
 
   # ax-ac: |- E. y A. z A. w ( ( z e. w /\ w e. x ) -> E. v A. u ( E. t ( ( u e. w /\ w e. t ) /\ ( u e. t /\ t e. y ) ) <-> u = v ) )
   # $d t u, t v, t w, t x, t y, t z, u v, u w, u x, u y, u z, v w, v x, v y, v z, w x, w y, w z, x y, x z, y z
-  (arr ax-ac (dv {del del del del del del del})
-    : ([x y z w v u t.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar) ([.v] setvar) ([.u] setvar) ([.t] setvar)})
-    -> ([x y z w v u t.] (({[.y] ({[.z] ({[.w] ({({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.x] cv)} in)} and) ({[.v] ({[.u] ({({[.t] ({({({([.u] cv) ([.w] cv)} in) ({([.w] cv) ([.t] cv)} in)} and) ({({([.u] cv) ([.t] cv)} in) ({([.t] cv) ([.y] cv)} in)} and)} and)} exists) ({([.u] cv) ([.v] cv)} =)} iff)} forall)} exists)} =>)} forall)} forall)} exists) |-)))
+  (arr ax-ac (dv ({del del del del del del} sel))
+    : ([y z w v u t x.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.w] setvar) ([.v] setvar) ([.u] setvar) ([.t] setvar)})
+    -> ([y z w v u t x.] (({[.y] ({[.z] ({[.w] ({({({([.z] cv) ([.w] cv)} in) ({([.w] cv) ([.x] cv)} in)} and) ({[.v] ({[.u] ({({[.t] ({({({([.u] cv) ([.w] cv)} in) ({([.w] cv) ([.t] cv)} in)} and) ({({([.u] cv) ([.t] cv)} in) ({([.t] cv) ([.y] cv)} in)} and)} and)} exists) ({([.u] cv) ([.v] cv)} =)} iff)} forall)} exists)} =>)} forall)} forall)} exists) |-)))
 
   # ax-ac2: |- E. y A. z E. v A. u ( ( y e. x /\ ( z e. y -> ( ( v e. x /\ -. y = v ) /\ z e. v ) ) ) \/ ( -. y e. x /\ ( z e. x -> ( ( v e. z /\ v e. y ) /\ ( ( u e. z /\ u e. y ) -> u = v ) ) ) ) )
   # $d u v, u x, u y, u z, v x, v y, v z, x y, x z, y z
-  (arr ax-ac2 (dv {del del del del del})
-    : ([x y z v u.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.v] setvar) ([.u] setvar)})
-    -> ([x y z v u.] (({[.y] ({[.z] ({[.v] ({[.u] ({({({([.y] cv) ([.x] cv)} in) ({({([.z] cv) ([.y] cv)} in) ({({({([.v] cv) ([.x] cv)} in) (({([.y] cv) ([.v] cv)} =) -.)} and) ({([.z] cv) ([.v] cv)} in)} and)} =>)} and) ({(({([.y] cv) ([.x] cv)} in) -.) ({({([.z] cv) ([.x] cv)} in) ({({({([.v] cv) ([.z] cv)} in) ({([.v] cv) ([.y] cv)} in)} and) ({({({([.u] cv) ([.z] cv)} in) ({([.u] cv) ([.y] cv)} in)} and) ({([.u] cv) ([.v] cv)} =)} =>)} and)} =>)} and)} or)} forall)} exists)} forall)} exists) |-)))
+  (arr ax-ac2 (dv ({del del del del} sel))
+    : ([y z v u x.] {([.x] setvar) ([.y] setvar) ([.z] setvar) ([.v] setvar) ([.u] setvar)})
+    -> ([y z v u x.] (({[.y] ({[.z] ({[.v] ({[.u] ({({({([.y] cv) ([.x] cv)} in) ({({([.z] cv) ([.y] cv)} in) ({({({([.v] cv) ([.x] cv)} in) (({([.y] cv) ([.v] cv)} =) -.)} and) ({([.z] cv) ([.v] cv)} in)} and)} =>)} and) ({(({([.y] cv) ([.x] cv)} in) -.) ({({([.z] cv) ([.x] cv)} in) ({({({([.v] cv) ([.z] cv)} in) ({([.v] cv) ([.y] cv)} in)} and) ({({({([.u] cv) ([.z] cv)} in) ({([.u] cv) ([.y] cv)} in)} and) ({([.u] cv) ([.v] cv)} =)} =>)} and)} =>)} and)} or)} forall)} exists)} forall)} exists) |-)))
 })
