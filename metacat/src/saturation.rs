@@ -7,7 +7,7 @@
 use crate::union_find::UnionFind;
 use hexpr::Operation;
 use open_hypergraphs::lax::OpenHypergraph;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, btree_map::Entry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SaturationError {
@@ -19,11 +19,26 @@ pub(crate) fn wire_saturation<O>(
     graph: &OpenHypergraph<O, Operation>,
 ) -> Result<UnionFind, SaturationError> {
     validate_edge_shapes(graph)?;
+    // Intern labels once so each propagation pass compares integers, not strings.
+    let operation_ids: Vec<usize> = {
+        let mut ids = BTreeMap::new();
+        graph
+            .hypergraph
+            .edges
+            .iter()
+            .map(|operation| {
+                let next_id = ids.len();
+                *ids.entry(operation).or_insert(next_id)
+            })
+            .collect()
+    };
     let mut relation = UnionFind::new(graph.hypergraph.nodes.len());
 
     loop {
-        let mut changed = propagate_equal_signatures(graph, &mut relation, Direction::Forward);
-        changed |= propagate_equal_signatures(graph, &mut relation, Direction::Backward);
+        let mut changed =
+            propagate_equal_signatures(graph, &operation_ids, &mut relation, Direction::Forward);
+        changed |=
+            propagate_equal_signatures(graph, &operation_ids, &mut relation, Direction::Backward);
         if !changed {
             return Ok(relation);
         }
@@ -57,32 +72,34 @@ enum Direction {
 
 fn propagate_equal_signatures<O>(
     graph: &OpenHypergraph<O, Operation>,
+    operation_ids: &[usize],
     relation: &mut UnionFind,
     direction: Direction,
 ) -> bool {
-    let mut groups: BTreeMap<(Operation, Vec<usize>), usize> = BTreeMap::new();
+    let mut groups: BTreeMap<(usize, Vec<usize>), usize> = BTreeMap::new();
     let mut changed = false;
 
-    for (edge_id, operation) in graph.hypergraph.edges.iter().enumerate() {
+    for (edge_id, &operation_id) in operation_ids.iter().enumerate() {
         let edge = &graph.hypergraph.adjacency[edge_id];
         let (premises, conclusions) = match direction {
             Direction::Forward => (&edge.sources, &edge.targets),
             Direction::Backward => (&edge.targets, &edge.sources),
         };
         let signature = premises.iter().map(|node| relation.find(node.0)).collect();
-        let key = (operation.clone(), signature);
-
-        if let Some(&representative_edge_id) = groups.get(&key) {
-            let representative = &graph.hypergraph.adjacency[representative_edge_id];
-            let representative_conclusions = match direction {
-                Direction::Forward => &representative.targets,
-                Direction::Backward => &representative.sources,
-            };
-            for (left, right) in representative_conclusions.iter().zip(conclusions) {
-                changed |= relation.union(left.0, right.0);
+        match groups.entry((operation_id, signature)) {
+            Entry::Occupied(entry) => {
+                let representative = &graph.hypergraph.adjacency[*entry.get()];
+                let representative_conclusions = match direction {
+                    Direction::Forward => &representative.targets,
+                    Direction::Backward => &representative.sources,
+                };
+                for (left, right) in representative_conclusions.iter().zip(conclusions) {
+                    changed |= relation.union(left.0, right.0);
+                }
             }
-        } else {
-            groups.insert(key, edge_id);
+            Entry::Vacant(entry) => {
+                entry.insert(edge_id);
+            }
         }
     }
 
@@ -289,6 +306,31 @@ mod tests {
         let right = node(&mut graph);
         graph.new_edge(operation("f"), ([shared], [left]));
         graph.new_edge(operation("g"), ([shared], [right]));
+
+        let mut relation = wire_saturation(&graph).expect("valid saturation");
+        assert!(!relation.equivalent(left.0, right.0));
+    }
+
+    #[test]
+    fn repeated_labels_reuse_ids_across_interleaved_edges() {
+        let mut graph = TestGraph::empty();
+        let shared = node(&mut graph);
+        let outputs: Vec<_> = (0..4).map(|_| node(&mut graph)).collect();
+        for (label, output) in ["z", "a", "z", "a"].into_iter().zip(&outputs) {
+            graph.new_edge(operation(label), ([shared], [*output]));
+        }
+
+        let mut relation = wire_saturation(&graph).expect("valid saturation");
+        assert!(relation.equivalent(outputs[0].0, outputs[2].0));
+        assert!(relation.equivalent(outputs[1].0, outputs[3].0));
+        assert!(!relation.equivalent(outputs[0].0, outputs[1].0));
+    }
+
+    #[test]
+    fn edgeless_graph_preserves_distinct_nodes() {
+        let mut graph = TestGraph::empty();
+        let left = node(&mut graph);
+        let right = node(&mut graph);
 
         let mut relation = wire_saturation(&graph).expect("valid saturation");
         assert!(!relation.equivalent(left.0, right.0));
