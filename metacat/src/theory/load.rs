@@ -109,7 +109,7 @@ impl TheorySet {
 }
 
 fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
-    let raw = raw.with_extensions()?;
+    let mut raw = raw.with_extensions()?;
 
     let syntax_bases = syntax_dependency_graph(&raw)?;
     let order = topological_order(&syntax_bases)?;
@@ -124,16 +124,23 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
             .expect("resolved syntax base missing")
             .clone();
 
-        let Some(raw_theory) = raw.theories.get(&theory_id.0) else {
+        let Some(raw_theory) = raw.theories.remove(&theory_id.0) else {
             // The builtin `nat` theory is injected into the environment but has
             // no raw source declaration and no finite arrow table.
             theories.insert(theory_id.clone(), Theory::Nat);
             continue;
         };
 
+        // Retain only the definition names for the second pass, not another AST.
+        let definitions: Vec<_> = raw_theory
+            .arrows
+            .values()
+            .filter(|arrow| arrow.definition.is_some())
+            .map(|arrow| arrow.name.clone())
+            .collect();
         let mut arrows = BTreeMap::new();
-        for raw_arrow in raw_theory.arrows.values() {
-            let ar = interpret_admissible_reachability(&theory_id, raw_arrow)?;
+        for raw_arrow in raw_theory.arrows.into_values() {
+            let ar = interpret_admissible_reachability(&theory_id, &raw_arrow)?;
             let type_maps = interpret_type_maps(
                 &theory_id,
                 &raw_arrow.name,
@@ -144,8 +151,8 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
             arrows.insert(
                 raw_arrow.name.clone(),
                 TheoryArrow {
-                    raw: raw_arrow.clone(),
                     name: raw_arrow.name.clone(),
+                    raw: raw_arrow,
                     type_maps,
                     ar,
                     definition: None,
@@ -153,24 +160,22 @@ fn resolve_raw_theory_set(raw: RawTheorySet) -> Result<TheorySet, LoadError> {
             );
         }
 
-        let mut theory = Theory::Theory {
-            syntax: syntax.clone(),
-            arrows,
-        };
+        let mut theory = Theory::Theory { syntax, arrows };
 
-        for raw_arrow in raw_theory.arrows.values() {
+        for name in definitions {
+            let raw_arrow = &theory.get_arrow(&name).expect("missing local arrow").raw;
             if let Some(definition) = &raw_arrow.definition {
                 let body = try_interpret(&theory.local_signature(), definition)
                     .map(|term| forget_labels(term))
                     .map_err(|source| LoadError::DefinitionInterpret {
                         theory: theory_id.clone(),
-                        arrow: raw_arrow.name.clone(),
+                        arrow: name.clone(),
                         source,
                     })?;
                 theory
                     .arrows_mut()
                     .expect("user theory should have arrows")
-                    .get_mut(&raw_arrow.name)
+                    .get_mut(&name)
                     .expect("missing local arrow")
                     .definition = Some(body);
             }
@@ -396,6 +401,52 @@ mod tests {
         );
         assert!(
             matches!(proof, Theory::Theory { arrows, .. } if arrows.values().any(|arrow| arrow.definition.is_some()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn moves_raw_definitions_and_resolves_forward_references()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let raw = RawTheorySet::from_text(
+            r#"
+            (theory syntax nat {
+              (arr wff : 1 -> 1)
+            })
+            (theory proof syntax {
+              (def first (metadata :) : wff -> wff = later)
+              (arr identity : wff -> wff)
+            })
+            (def proof later : wff -> wff = identity)
+            "#,
+        )?;
+        let proof_name = "proof".parse()?;
+        let first_name = "first".parse()?;
+        let first = &raw.theories[&proof_name].arrows[&first_name];
+        let Hexpr::Operation(definition) = first.definition.as_ref().unwrap() else {
+            panic!("expected operation");
+        };
+        // A surviving name allocation demonstrates that loading moved the AST.
+        let name_ptr = definition.as_str().as_ptr();
+        let expected = first.clone();
+        let loaded = TheorySet::from_raw(raw)?;
+        let proof = &loaded.theories[&TheoryId(proof_name)];
+        let first = proof.get_arrow(&first_name).unwrap();
+        assert_eq!(first.raw.annotations, expected.annotations);
+        assert_eq!(first.raw.type_maps, expected.type_maps);
+        assert_eq!(first.raw.definition, expected.definition);
+        let Hexpr::Operation(definition) = first.raw.definition.as_ref().unwrap() else {
+            panic!("expected operation");
+        };
+        assert_eq!(definition.as_str().as_ptr(), name_ptr);
+        assert_eq!(
+            first.definition.as_ref().unwrap().hypergraph.edges,
+            vec!["later".parse()?]
+        );
+        let later = proof.get_arrow(&"later".parse()?).unwrap();
+        assert_eq!(
+            later.definition.as_ref().unwrap().hypergraph.edges,
+            vec!["identity".parse()?]
         );
         Ok(())
     }

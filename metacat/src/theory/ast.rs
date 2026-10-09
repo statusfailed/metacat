@@ -10,7 +10,7 @@
 //! collecting them into a mergeable set of raw theories.
 
 use hexpr::{Hexpr, Operation, ParseError, parse_hexprs};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
 use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
@@ -104,15 +104,15 @@ impl RawTheorySet {
         let mut extensions = Vec::new();
 
         for hexpr in hexprs {
-            match RawTopLevel::try_from_hexpr(hexpr.clone())? {
-                RawTopLevel::Theory(theory) => {
-                    if theories
-                        .insert(theory.name.clone(), theory.clone())
-                        .is_some()
-                    {
+            match RawTopLevel::try_from_hexpr(hexpr)? {
+                RawTopLevel::Theory(theory) => match theories.entry(theory.name.clone()) {
+                    Entry::Occupied(_) => {
                         return Err(ParseRawError::DuplicateTheory(theory.name));
                     }
-                }
+                    Entry::Vacant(entry) => {
+                        entry.insert(theory);
+                    }
+                },
                 RawTopLevel::Extension(extension) => extensions.push(extension),
             }
         }
@@ -242,126 +242,134 @@ impl RawTheory {
         Ok(self)
     }
 
-    fn try_from_hexpr(hexpr: Hexpr) -> Option<Self> {
+    fn has_valid_header(hexpr: &Hexpr) -> bool {
         let Hexpr::Composition(parts) = hexpr else {
-            return None;
+            return false;
         };
-
-        let [keyword, name, syntax_category, body] = &parts[..] else {
-            return None;
+        let [
+            keyword,
+            Hexpr::Operation(_),
+            Hexpr::Operation(_),
+            Hexpr::Tensor(_),
+        ] = &parts[..]
+        else {
+            return false;
         };
+        is_operation(keyword, "theory")
+    }
 
-        if !is_operation(keyword, "theory") {
-            return None;
+    /// Preflight by borrowing so a top-level parse error can retain the whole
+    /// original expression without cloning it on the successful path.
+    fn is_valid_hexpr(hexpr: &Hexpr) -> bool {
+        if !Self::has_valid_header(hexpr) {
+            return false;
         }
-
-        let Hexpr::Operation(name) = name else {
-            return None;
+        let Hexpr::Composition(parts) = hexpr else {
+            unreachable!("validated theory header");
         };
-        let Hexpr::Operation(syntax_category) = syntax_category else {
-            return None;
+        let Hexpr::Tensor(body) = &parts[3] else {
+            unreachable!("validated theory body");
         };
-        let Hexpr::Tensor(body) = body else {
-            return None;
-        };
-
-        let mut arrows = BTreeMap::new();
+        let mut names = BTreeSet::new();
         for declaration in body {
-            let arrow = RawTheoryArrow::try_from_hexpr(declaration.clone())?;
-            if arrows.insert(arrow.name.clone(), arrow.clone()).is_some() {
-                return None;
+            let Hexpr::Composition(parts) = declaration else {
+                return false;
+            };
+            if RawTheoryArrow::annotations_end(parts, 1).is_none() {
+                return false;
+            }
+            let Hexpr::Operation(name) = &parts[1] else {
+                unreachable!("validated arrow name");
+            };
+            if !names.insert(name) {
+                return false;
             }
         }
-
-        Some(Self {
-            name: name.clone(),
-            syntax_category: syntax_category.clone(),
-            arrows,
-        })
+        true
     }
 
     pub fn from_hexpr(hexpr: Hexpr) -> Result<Self, ParseRawError> {
-        let Hexpr::Composition(parts) = &hexpr else {
+        if !Self::has_valid_header(&hexpr) {
             return Err(ParseRawError::InvalidTheoryDeclaration(hexpr));
+        }
+        let Hexpr::Composition(parts) = hexpr else {
+            unreachable!("validated theory header");
         };
-
-        let theory_name = match &parts[..] {
-            [keyword, Hexpr::Operation(name), _, _] if is_operation(keyword, "theory") => {
-                name.clone()
-            }
-            _ => return Err(ParseRawError::InvalidTheoryDeclaration(hexpr)),
-        };
-
-        let Hexpr::Composition(parts) = hexpr.clone() else {
-            unreachable!();
-        };
-        let [_, name, syntax_category, body] = &parts[..] else {
-            return Err(ParseRawError::InvalidTheoryDeclaration(hexpr));
-        };
-        let Hexpr::Operation(name) = name else {
-            return Err(ParseRawError::InvalidTheoryDeclaration(hexpr));
-        };
-        let Hexpr::Operation(syntax_category) = syntax_category else {
-            return Err(ParseRawError::InvalidTheoryDeclaration(hexpr));
-        };
-        let Hexpr::Tensor(body) = body else {
-            return Err(ParseRawError::InvalidTheoryDeclaration(hexpr));
+        let parts: [Hexpr; 4] = parts.try_into().expect("validated theory header");
+        let [
+            _,
+            Hexpr::Operation(name),
+            Hexpr::Operation(syntax_category),
+            Hexpr::Tensor(body),
+        ] = parts
+        else {
+            unreachable!("validated theory header");
         };
 
         let mut arrows = BTreeMap::new();
         for declaration in body {
-            let arrow = RawTheoryArrow::try_from_hexpr(declaration.clone()).ok_or_else(|| {
+            let arrow = RawTheoryArrow::try_from_hexpr(declaration).map_err(|declaration| {
                 ParseRawError::InvalidArrowDeclaration {
-                    theory: theory_name.clone(),
-                    declaration: declaration.clone(),
+                    theory: name.clone(),
+                    declaration,
                 }
             })?;
-            if arrows.insert(arrow.name.clone(), arrow.clone()).is_some() {
-                return Err(ParseRawError::DuplicateArrow {
-                    theory: theory_name.clone(),
-                    arrow: arrow.name,
-                });
+            match arrows.entry(arrow.name.clone()) {
+                Entry::Occupied(_) => {
+                    return Err(ParseRawError::DuplicateArrow {
+                        theory: name,
+                        arrow: arrow.name,
+                    });
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(arrow);
+                }
             }
         }
 
         Ok(Self {
-            name: name.clone(),
-            syntax_category: syntax_category.clone(),
+            name,
+            syntax_category,
             arrows,
         })
     }
 }
 
 impl Extension {
-    fn try_from_top_level_def(hexpr: Hexpr) -> Option<Self> {
-        let Hexpr::Composition(parts) = hexpr else {
-            return None;
+    fn try_from_top_level_def(hexpr: Hexpr) -> Result<Self, Hexpr> {
+        let Hexpr::Composition(parts) = &hexpr else {
+            return Err(hexpr);
         };
 
-        if !is_operation(parts.first()?, "def") {
-            return None;
+        if !parts.first().is_some_and(|kind| is_operation(kind, "def")) {
+            return Err(hexpr);
         }
-        let Hexpr::Operation(theory) = parts.get(1)? else {
-            return None;
+        let Some(Hexpr::Operation(theory)) = parts.get(1) else {
+            return Err(hexpr);
         };
-        let raw_arrow = RawTheoryArrow::try_from_parts(&parts, 2)?;
+        if RawTheoryArrow::annotations_end(parts, 2).is_none() {
+            return Err(hexpr);
+        }
+        let theory = theory.clone();
+        let Hexpr::Composition(parts) = hexpr else {
+            unreachable!("validated top-level definition");
+        };
+        let raw_arrow = RawTheoryArrow::from_validated_parts(parts, 2);
         let mut arrows = BTreeMap::new();
         arrows.insert(raw_arrow.name.clone(), raw_arrow);
-        Some(Self {
-            theory: theory.clone(),
-            arrows,
-        })
+        Ok(Self { theory, arrows })
     }
 }
 
 impl RawTopLevel {
     fn try_from_hexpr(hexpr: Hexpr) -> Result<Self, ParseRawError> {
-        if let Some(theory) = RawTheory::try_from_hexpr(hexpr.clone()) {
-            return Ok(Self::Theory(theory));
+        if RawTheory::is_valid_hexpr(&hexpr) {
+            return RawTheory::from_hexpr(hexpr).map(Self::Theory);
         }
-        if let Some(extension) = Extension::try_from_top_level_def(hexpr.clone()) {
-            return Ok(Self::Extension(extension));
-        }
+        let hexpr = match Extension::try_from_top_level_def(hexpr) {
+            Ok(extension) => return Ok(Self::Extension(extension)),
+            Err(hexpr) => hexpr,
+        };
         if matches!(&hexpr, Hexpr::Composition(parts) if matches!(parts.first(), Some(Hexpr::Operation(op)) if op.as_str() == "def"))
         {
             return Err(ParseRawError::InvalidTopLevelDefinition(hexpr));
@@ -371,39 +379,45 @@ impl RawTopLevel {
 }
 
 impl RawTheoryArrow {
-    fn try_from_hexpr(hexpr: Hexpr) -> Option<Self> {
-        let Hexpr::Composition(parts) = hexpr else {
-            return None;
+    fn try_from_hexpr(hexpr: Hexpr) -> Result<Self, Hexpr> {
+        let Hexpr::Composition(parts) = &hexpr else {
+            return Err(hexpr);
         };
-        Self::try_from_parts(&parts, 1)
+        if Self::annotations_end(parts, 1).is_none() {
+            return Err(hexpr);
+        }
+        let Hexpr::Composition(parts) = hexpr else {
+            unreachable!("validated arrow declaration");
+        };
+        Ok(Self::from_validated_parts(parts, 1))
     }
 
-    /// Parse an arrow declaration, using `name_index` to locate its name.
+    /// Validate the declaration and locate `:`, using `name_index` for the name.
     /// Top-level definitions have an extra theory name before the arrow name.
-    fn try_from_parts(parts: &[Hexpr], name_index: usize) -> Option<Self> {
+    fn annotations_end(parts: &[Hexpr], name_index: usize) -> Option<usize> {
         let kind = parts.first()?;
-        let Hexpr::Operation(name) = parts.get(name_index)? else {
+        let Hexpr::Operation(_) = parts.get(name_index)? else {
             return None;
         };
 
-        let (annotations_end, source, target, definition) = if is_operation(kind, "arr") {
+        let annotations_end = if is_operation(kind, "arr") {
             let annotations_end = parts.len().checked_sub(4)?;
-            let [colon, source, arrow, target] = &parts[annotations_end..] else {
+            let [colon, _, arrow, _] = &parts[annotations_end..] else {
                 return None;
             };
             if !is_operation(colon, ":") || !is_operation(arrow, "->") {
                 return None;
             }
-            (annotations_end, source, target, None)
+            annotations_end
         } else if is_operation(kind, "def") {
             let annotations_end = parts.len().checked_sub(6)?;
-            let [colon, source, arrow, target, eq, definition] = &parts[annotations_end..] else {
+            let [colon, _, arrow, _, eq, _] = &parts[annotations_end..] else {
                 return None;
             };
             if !is_operation(colon, ":") || !is_operation(arrow, "->") || !is_operation(eq, "=") {
                 return None;
             }
-            (annotations_end, source, target, Some(definition.clone()))
+            annotations_end
         } else {
             return None;
         };
@@ -412,28 +426,51 @@ impl RawTheoryArrow {
         if annotations_end < annotations_start {
             return None;
         }
-        let annotations = parts[annotations_start..annotations_end]
+        if !parts[annotations_start..annotations_end]
             .iter()
-            .map(parse_annotation)
-            .collect::<Option<Vec<_>>>()?;
+            .all(|annotation| matches!(annotation, Hexpr::Composition(pair) if pair.len() == 2))
+        {
+            return None;
+        }
+        Some(annotations_end)
+    }
 
-        Some(Self {
-            name: name.clone(),
+    /// Move the already-validated fields out, retaining the original AST buffers.
+    fn from_validated_parts(mut parts: Vec<Hexpr>, name_index: usize) -> Self {
+        let definition = if is_operation(&parts[0], "def") {
+            let body = parts.pop().expect("validated definition");
+            parts.pop(); // =
+            Some(body)
+        } else {
+            None
+        };
+        let target = parts.pop().expect("validated target");
+        parts.pop(); // ->
+        let source = parts.pop().expect("validated source");
+        parts.pop(); // :
+        let annotations = parts
+            .drain(name_index + 1..)
+            .map(|annotation| parse_annotation(annotation).expect("validated annotation"))
+            .collect();
+        let Hexpr::Operation(name) = parts.pop().expect("validated name") else {
+            unreachable!("validated arrow name");
+        };
+
+        Self {
+            name,
             annotations,
-            type_maps: (source.clone(), target.clone()),
+            type_maps: (source, target),
             definition,
-        })
+        }
     }
 }
 
-fn parse_annotation(hexpr: &Hexpr) -> Option<RawAnnotation> {
+fn parse_annotation(hexpr: Hexpr) -> Option<RawAnnotation> {
     let Hexpr::Composition(parts) = hexpr else {
         return None;
     };
-    let [kind, value] = &parts[..] else {
-        return None;
-    };
-    Some((kind.clone(), value.clone()))
+    let [kind, value]: [Hexpr; 2] = parts.try_into().ok()?;
+    Some((kind, value))
 }
 
 fn theory_to_hexpr_text(theory: &RawTheory) -> String {
@@ -574,6 +611,87 @@ mod tests {
         .unwrap_err();
 
         assert!(matches!(error, ParseRawError::InvalidTheoryDeclaration(_)));
+    }
+
+    #[test]
+    fn invalid_top_levels_retain_original_expression() -> Result<(), Box<dyn std::error::Error>> {
+        for text in [
+            "(theory bad nat {(arr f (dv) : 1 -> 1)})",
+            "(theory bad nat {(arr f : 1 -> 1) (arr f : 1 -> 1)})",
+            "(theory bad nat {(arr f : 1 ->)})",
+            "(theory bad nat (arr f : 1 -> 1))",
+        ] {
+            let original: Hexpr = text.parse()?;
+            let ParseRawError::InvalidTheoryDeclaration(declaration) =
+                RawTheorySet::from_text(text).unwrap_err()
+            else {
+                panic!("expected invalid theory: {text}");
+            };
+            assert_eq!(declaration, original);
+        }
+        let text = "(def theory f (dv too many) : 1 -> 1 = f)";
+        let ParseRawError::InvalidTopLevelDefinition(declaration) =
+            RawTheorySet::from_text(text).unwrap_err()
+        else {
+            panic!("expected invalid top-level definition");
+        };
+        assert_eq!(declaration, text.parse()?);
+        Ok(())
+    }
+
+    #[test]
+    fn from_hexpr_retains_detailed_arrow_errors() -> Result<(), Box<dyn std::error::Error>> {
+        let declaration: Hexpr = "(arr f (dv) : 1 -> 1)".parse()?;
+        let text = format!("(theory bad nat {{{declaration}}})");
+        let ParseRawError::InvalidArrowDeclaration {
+            theory,
+            declaration: actual,
+        } = RawTheory::from_hexpr(text.parse()?).unwrap_err()
+        else {
+            panic!("expected invalid arrow");
+        };
+        assert_eq!(theory.as_str(), "bad");
+        assert_eq!(actual, declaration);
+
+        let text = "(theory bad nat {(arr f : 1 -> 1) (arr f : 1 -> 1)})";
+        let ParseRawError::DuplicateArrow { theory, arrow } =
+            RawTheory::from_hexpr(text.parse()?).unwrap_err()
+        else {
+            panic!("expected duplicate arrow");
+        };
+        assert_eq!(theory.as_str(), "bad");
+        assert_eq!(arrow.as_str(), "f");
+        Ok(())
+    }
+
+    #[test]
+    fn moves_arrow_fields_without_cloning() -> Result<(), Box<dyn std::error::Error>> {
+        let mut expr: Hexpr =
+            "(def f ((tag _) ^(label _)) : {^label [x^(a b) . x]} -> {} = (g _))".parse()?;
+        let Hexpr::Composition(parts) = &mut expr else {
+            unreachable!()
+        };
+        let Hexpr::Composition(body) = parts.last_mut().unwrap() else {
+            unreachable!()
+        };
+        body.reserve(32);
+        let body_ptr = body.as_ptr();
+        let Hexpr::Operation(op) = &body[0] else {
+            unreachable!()
+        };
+        let name_ptr = op.as_str().as_ptr();
+        let original = expr.clone();
+        let arrow = RawTheoryArrow::try_from_hexpr(expr).unwrap();
+        assert_eq!(arrow_to_hexpr_text(&arrow).parse::<Hexpr>()?, original);
+        let Hexpr::Composition(body) = arrow.definition.as_ref().unwrap() else {
+            unreachable!()
+        };
+        assert_eq!(body.as_ptr(), body_ptr);
+        let Hexpr::Operation(op) = &body[0] else {
+            unreachable!()
+        };
+        assert_eq!(op.as_str().as_ptr(), name_ptr);
+        Ok(())
     }
 
     #[test]
