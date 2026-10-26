@@ -1,3 +1,4 @@
+use crate::definition_cycles::validate_definition_cycles;
 use crate::path::{GeneratorMetavariables, PathFunctor};
 use crate::saturation::{SaturationError, wire_saturation};
 use crate::theory::{Term, Theory};
@@ -40,6 +41,12 @@ pub enum Error {
     InvalidTypeMaps,
     #[error("Unable to quotient graph {0:?}")]
     InvalidQuotient(FiniteFunction),
+    #[error("Proof graph is not monogamous")]
+    NonMonogamousProof,
+    #[error("Proof graph contains a directed cycle")]
+    CyclicProof,
+    #[error("Definition dependency cycle involving {operation}")]
+    CyclicDefinition { operation: Operation },
     #[error("Path morphism has different source and target boundary arities")]
     BoundaryArityMismatch,
     #[error("Boundary position {boundary} has unequal source and target images")]
@@ -65,6 +72,10 @@ impl From<SaturationError> for Error {
 
 /// Check a first-order derivation and return its saturated path witness.
 ///
+/// The proof graph must be monogamous and acyclic. This restriction does not
+/// apply to its syntax/type maps, which may share nodes.
+/// Transitively referenced definitions must also have acyclic dependencies.
+///
 /// [`CheckResult::proof_classes`] transports wire saturation back to the nodes
 /// of `arrow`, allowing callers to enforce application-specific restrictions
 /// on which proof nodes may be identified.
@@ -76,6 +87,8 @@ pub fn check(
 ) -> Result<CheckResult, Error> {
     arrow.quotient().map_err(Error::InvalidQuotient)?;
     validate_proof_shapes(theory, arrow)?;
+    validate_proof_structure(arrow)?;
+    validate_definition_cycles(theory, arrow)?;
     let mapped = PathFunctor::new(theory)
         .map_arrow_with_metavariables(arrow)
         .ok_or(Error::InvalidTypeMaps)?;
@@ -105,6 +118,19 @@ pub fn check(
         proof_nodes,
         generator_metavariables,
     })
+}
+
+/// Require an acyclic monogamous proof before applying `Path`, which forgets
+/// proof-edge direction and cannot detect invalid proof wiring afterwards.
+fn validate_proof_structure(arrow: &Term) -> Result<(), Error> {
+    let proof = arrow.clone().to_strict();
+    if !proof.is_monogamous() {
+        return Err(Error::NonMonogamousProof);
+    }
+    if !proof.is_acyclic() {
+        return Err(Error::CyclicProof);
+    }
+    Ok(())
 }
 
 /// Fallible, validating wrapper that applies `PathFunctor` to a proof term.
@@ -220,21 +246,22 @@ fn transport_nodes(nodes: &mut [usize], quotient: &FiniteFunction) -> Result<(),
 
 /// Convert union-find representatives into a compact quotient map.
 fn quotient_mapping(relation: &mut UnionFind, node_count: usize) -> FiniteFunction {
-    let mut representatives = Vec::new();
+    // Representatives are node indices. Assign compact class numbers on first
+    // encounter, without searching the classes already seen for every node.
+    let mut classes = vec![usize::MAX; node_count];
+    let mut class_count = 0;
     let table = (0..node_count)
         .map(|node| {
             let representative = relation.find(node);
-            representatives
-                .iter()
-                .position(|&known| known == representative)
-                .unwrap_or_else(|| {
-                    representatives.push(representative);
-                    representatives.len() - 1
-                })
+            if classes[representative] == usize::MAX {
+                classes[representative] = class_count;
+                class_count += 1;
+            }
+            classes[representative]
         })
         .collect();
 
-    FiniteFunction::new(VecArray(table), representatives.len())
+    FiniteFunction::new(VecArray(table), class_count)
         .expect("induced wire saturation should be a finite function")
 }
 

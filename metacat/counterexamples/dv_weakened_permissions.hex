@@ -1,0 +1,6 @@
+# INVALID export: keep x bare but permit x to occur in ph, erasing ax-5's DV.
+# If admitted, instantiating ph=predicate(x) would give the false dv_capture case.
+(def proof bad (dv _)
+  : ([x ph.ph] wff)
+  -> ([x ph.] { [.ph] ([.x ph] forall) } => |-)
+  = ax-5)

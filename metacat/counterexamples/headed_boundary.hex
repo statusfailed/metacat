@@ -1,0 +1,4 @@
+# FALSE: force the arbitrary boundary formula ph to be false while checking.
+# Ordinary unification can solve ph=false; checking a universally quantified
+# declaration must reject that specialization of its boundary metavariable.
+(def proof bad : ([ph] |-) -> ([ph.] false |-) = _)

@@ -16,6 +16,7 @@ const THEORY: &str = r#"
   (arr selective (dv {_ sel}) : [x ph ps] -> [x ph ps])
   (arr plain : [x ph] -> [x ph])
   (arr malformed (dv dup) : [x ph] -> [x ph])
+  (arr malformed-formula (dv sel) : [x ph] -> [x ph])
 })
 "#;
 
@@ -252,5 +253,33 @@ fn ordinary_checking_errors_are_preserved() {
             &mut definition,
         ),
         Err(DvError::Check(_))
+    ));
+}
+
+#[test]
+fn lazy_reachability_still_checks_later_annotated_generators() {
+    // The unannotated occurrence has no DV obligations. The later occurrence
+    // must still reject the boundary dependency, regardless of traversal order.
+    assert!(matches!(
+        check_example("(def proof example (dv _) : [x ph] -> [x ph] = (plain guard))"),
+        Err(DvError::ForbiddenReachability { .. })
+    ));
+}
+
+#[test]
+fn formula_only_annotations_still_validate_their_arity() {
+    assert!(matches!(
+        check_example("(def proof example (dv sel) : [x ph] -> [x ph] = plain)"),
+        Err(DvError::InvalidArity {
+            location: DvLocation::Boundary,
+            ..
+        })
+    ));
+    assert!(matches!(
+        check_example("(def proof example : [x ph] -> [x ph] = malformed-formula)"),
+        Err(DvError::InvalidArity {
+            location: DvLocation::Generator { .. },
+            ..
+        })
     ));
 }

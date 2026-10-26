@@ -1,0 +1,2 @@
+# FALSE: syntax formation is not provability; instantiate ph=false.
+(def proof bad : wff -> |- = _)

@@ -8,7 +8,8 @@ Usage (Python 3.10+, standard library only)::
 
 The input must be self-contained: $[ includes $] are not supported. Syntax is
 derived from syntactic $a declarations. Compressed and uncompressed proofs are
-replayed (including substitutions and $d checks), then emitted as shared DAGs.
+replayed (including substitutions and $d checks), then emitted as shared DAGs
+with explicit, judgment-specific copying and discarding operations.
 
 --check uses the repository's Rust verify_metamath example and retains only
 successfully checked proofs with checked dependencies. Without it, the output
@@ -526,11 +527,33 @@ def ar_annotation(database, statement, bare):
 
 
 ALIASES = {"ax7v": "ax-7", "ax7v1": "ax-7", "ax7v2": "ax-7"}
+PROOF_SORTS = {"|-": "proof", "wff": "wff", "setvar": "setvar", "class": "class"}
+STRUCTURAL_ARROWS = {
+    f"mm-{operation}-{suffix}"
+    for operation in ("copy", "discard") for suffix in PROOF_SORTS.values()
+}
+GENERATED_HELPERS = STRUCTURAL_ARROWS | {"fresh", "fresh-wff", "fresh-class"}
+
+
+def validate_helper_names(database):
+    for name in sorted(GENERATED_HELPERS):
+        require(name not in database, f"input label {name} conflicts with a generated helper")
+
+
+def structural_declarations():
+    """Make Metamath's reusable judgments explicit in this proof theory only."""
+    lines = ["  # Metamath judgments permit contraction and weakening."]
+    for sort, suffix in PROOF_SORTS.items():
+        lines.append(f"  (arr mm-copy-{suffix} : {sort} -> ([x.x x] {{{sort} {sort}}}))")
+        lines.append(f"  (arr mm-discard-{suffix} : {sort} -> [x.])")
+    return "\n".join(lines) + "\n\n"
 
 
 def proof_hex(database, statement, root, aliases=None):
+    """Retain shared applications, but give every use its own proof wire."""
     aliases = ALIASES if aliases is None else aliases
     names = {label: "h" + str(i) for i, label in enumerate(statement.hypotheses)}
+    sorts = {name: database[label].expression[0] for label, name in names.items()}
     nodes = {}
     applications = {}
     commands = []
@@ -544,7 +567,8 @@ def proof_hex(database, statement, root, aliases=None):
                         f"{statement.label}: cannot introduce local hypothesis {step.label}")
                 name = "dummy-" + str(len(nodes))
                 operation = "fresh" if s.expression[0] == "setvar" else "fresh-" + s.expression[0]
-                commands.append("(" + operation + " [" + name + ".])")
+                commands.append(([], operation, name))
+                sorts[name] = step.expression[0]
                 nodes[step] = name
                 if not step.local:
                     names[step.label] = name
@@ -558,11 +582,54 @@ def proof_hex(database, statement, root, aliases=None):
         name = "p" + str(len(commands))
         nodes[step] = name
         applications[key] = name
-        commands.append("([." + " ".join(args) + "] " + aliases.get(step.label, step.label) + " [" + name + ".])")
+        commands.append((args, aliases.get(step.label, step.label), name))
+        sorts[name] = step.expression[0]
         return name
     output = visit(root)
+    uses = defaultdict(int)
+    uses[output] += 1  # The conclusion is a consumer too, including identity proofs.
+    for args, _, _ in commands:
+        for name in args:
+            uses[name] += 1
+
+    available = {}
+    lines = []
+
+    def distribute(name):
+        """Discard unused wires or split fan-out with a balanced tree of copies."""
+        count = uses[name]
+        require(sorts[name] in PROOF_SORTS,
+                f"{statement.label}: unsupported proof judgment {sorts[name]}")
+        suffix = PROOF_SORTS[sorts[name]]
+        if count == 0:
+            lines.append(f"([.{name}] mm-discard-{suffix})")
+        elif count == 1:
+            available[name] = iter([name])
+        else:
+            leaves = [f"{name}-use-{i}" for i in range(count)]
+            available[name] = iter(leaves)
+            pending = [(name, 0, count)]
+            while pending:
+                source, start, end = pending.pop()
+                middle = (start + end) // 2
+                children = []
+                for first, last in ((start, middle), (middle, end)):
+                    if last - first == 1:
+                        children.append(leaves[first])
+                    else:
+                        child = f"{name}-split-{first}-{last}"
+                        children.append(child)
+                        pending.append((child, first, last))
+                lines.append(f"([.{source}] mm-copy-{suffix} [{' '.join(children)}.])")
+
+    for label in statement.hypotheses:
+        distribute(names[label])
+    for args, operation, name in commands:
+        inputs = " ".join(next(available[arg]) for arg in args)
+        lines.append(f"([.{inputs}] {operation} [{name}.])")
+        distribute(name)
     inputs = " ".join(names[label] for label in statement.hypotheses)
-    return "{[" + inputs + ".]\n    " + "\n    ".join(commands) + "\n    [." + output + "]}"
+    return "{[" + inputs + ".]\n    " + "\n    ".join(lines) + "\n    [." + next(available[output]) + "]}"
 
 
 def declaration(database, parser, statement, bare, proof=None, aliases=None):
@@ -586,6 +653,7 @@ def declaration(database, parser, statement, bare, proof=None, aliases=None):
 
 def generate(database, source_hash):
     """Translate the small foundational/sp fragment with inferred DV interfaces."""
+    validate_helper_names(database)
     for label, replacement in ALIASES.items():
         require(label in database and replacement in database, f"missing fragment alias {label}")
         original, base = database[label], database[replacement]
@@ -632,6 +700,8 @@ def generate(database, source_hash):
 # Scope: the 29 foundational ax-* declarations through ax-ac2, including
 # redundant variants and weaker choice axioms; no ax-groth or mathbox axioms.
 # Theorems are the dependency chain of sp, with the original proof DAGs.
+# Reused and unused judgments have explicit mm-copy-* / mm-discard-* operations;
+# these are structural rules of this proof theory, not general checker rules.
 # Definitions are df-bi, df-or, df-an and df-ex. Other notation appearing only
 # in ax-cc/ax-dc is declared syntactically; its definitions are not ported here.
 #
@@ -650,7 +720,7 @@ def generate(database, source_hash):
 # its uses in equid and 19.8a discharge the original dummy-variable conditions.
 
 """
-    return header + "\n".join(syntax) + "\n\n(theory set.proof set.syntax {\n  # A local set-variable declaration, used for Metamath's dummy variables.\n  (arr fresh (dv del) : [x.] -> ([x] setvar))\n\n" + "\n".join(output) + "})\n"
+    return header + "\n".join(syntax) + "\n\n(theory set.proof set.syntax {\n" + structural_declarations() + "  # A local set-variable declaration, used for Metamath's dummy variables.\n  (arr fresh (dv del) : [x.] -> ([x] setvar))\n\n" + "\n".join(output) + "})\n"
 
 
 def proof_steps(root):
@@ -921,8 +991,9 @@ class ProofTranslator:
 def generate_all(database, source_hash, excluded=(), max_steps=20000, through=None, max_variants=128):
     """Build a candidate theory and an outcome for every selected assertion.
 
-    Only original $a declarations/their specializations and local-variable
-    introduction become axioms. Unavailable $p variants are inlined if possible.
+    Primitive rules are original $a declarations/their specializations,
+    local-variable introduction, and explicit copying/discarding of judgments.
+    Unavailable $p variants are inlined if possible.
     Redundant, unrepresentable $d pairs may disappear from derived interfaces,
     but these stronger claims must subsequently pass Metacat's DV checker.
     """
@@ -930,8 +1001,7 @@ def generate_all(database, source_hash, excluded=(), max_steps=20000, through=No
     translator = ProofTranslator(database, max_steps)
     statements = list(database.values())
     database = translator.database
-    for name in ("fresh", "fresh-wff", "fresh-class"):
-        require(name not in database, f"input label {name} conflicts with local-variable introduction")
+    validate_helper_names(database)
     syntax = ["(theory set.syntax nat {"]
     syntax.extend(f"  (arr {sort} : 1 -> 1)" for sort in ("wff", "setvar", "class", "|-"))
     syntax.extend(f"  (arr {name} : {arity} -> 1)" for name, arity in grammar.constructors.items())
@@ -944,12 +1014,14 @@ def generate_all(database, source_hash, excluded=(), max_steps=20000, through=No
         "# See set.report.json and set-untranslated.tsv for coverage and failures.\n"
         "# Constructors mm-LABEL come from the source's syntactic $a declarations.\n"
         "# Floating and essential hypotheses are explicit proof inputs.\n"
+        "# mm-copy-* / mm-discard-* explicitly encode reusable judgments.\n"
         "# Some derived interfaces omit redundant $d pairs; retained proofs must\n"
         "# pass Metacat DV checking under those weaker assumptions.\n\n"
         "# mm-unbundled-LABEL-PATTERN explicitly specialize variable identifications.\n"
         "# A source theorem counts as ported only when its entire family is checked.\n\n"
     )
     prefix = header + "\n".join(syntax) + "\n\n(theory set.proof set.syntax {\n"
+    prefix += structural_declarations()
     for sort in ("setvar", "wff", "class"):
         name = "fresh" if sort == "setvar" else "fresh-" + sort
         prefix += f"  (arr {name} (dv del) : [x.] -> ([x] {sort}))\n"
@@ -1064,8 +1136,8 @@ def check_candidates(path, records, pieces):
             status, label, detail = fields
             require(label not in seen, f"duplicate checker result for {label}")
             seen.add(label)
-            if label in ("fresh", "fresh-wff", "fresh-class"):
-                require(status == "OK", f"local-variable introduction failed: {detail}")
+            if label in GENERATED_HELPERS:
+                require(status == "OK", f"generated helper {label} failed: {detail}")
                 continue
             require(label in pieces, f"unexpected checker result for {label}")
             record = records[label]

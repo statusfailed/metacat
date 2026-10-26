@@ -1,0 +1,3 @@
+# FALSE: declare bottom proved by invoking that very declaration.
+# The body is an ordinary one-edge DAG, but the definition dependency is cyclic.
+(def proof bad : {} -> (false |-) = bad)

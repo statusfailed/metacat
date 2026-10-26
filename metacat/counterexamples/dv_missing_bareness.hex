@@ -1,0 +1,6 @@
+# INVALID export: forget ax-5's bare-variable requirement while naming it.
+# The unannotated interface would allow later substitution of a compound for x.
+(def proof bad
+  : ([x ph.ph] wff)
+  -> ([x ph.] { [.ph] ([.x ph] forall) } => |-)
+  = ax-5)

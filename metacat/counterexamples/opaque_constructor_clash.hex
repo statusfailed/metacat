@@ -1,0 +1,4 @@
+# FALSE: hide true-intro behind an independently checked lemma, then request
+# false. Declared-type replacement must still compare the constructor heads.
+(def proof lemma : {} -> (true |-) = true-intro)
+(def proof bad : {} -> (false |-) = lemma)

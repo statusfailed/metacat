@@ -1,0 +1,4 @@
+# FALSE: two individually well-typed bodies with no non-circular proof of bottom.
+# A whole-file check must reject this, not treat both declared types as axioms.
+(def proof peer : {} -> (false |-) = bad)
+(def proof bad : {} -> (false |-) = peer)

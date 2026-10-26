@@ -1,0 +1,24 @@
+# Shared signature for the negative fixtures. Load this before one fixture.
+# Logical reading: true/false are truth/falsity, |- is provability, and wff is
+# syntax formation. id, true-intro, and ax-5 are sound with ax-5's DV condition.
+# box/pair/split are free syntax constructors, with distinct split output ports.
+# Some fixtures attack typing/DV validity rather than assert a false proposition.
+(theory syntax nat {
+  (arr true : 0 -> 1)
+  (arr false : 0 -> 1)
+  (arr |- : 1 -> 1)
+  (arr wff : 1 -> 1)
+  (arr box : 1 -> 1)
+  (arr pair : 2 -> 1)
+  (arr split : 1 -> 2)
+  (arr predicate : 1 -> 1)
+  (arr => : 2 -> 1)
+  (arr forall : 2 -> 1)
+})
+(theory proof syntax {
+  (arr true-intro : {} -> (true |-))
+  (arr id : |- -> |-)
+  (arr ax-5 (dv (del sel))
+    : ([x ph.ph] wff)
+    -> ([x ph.] { [.ph] ([.x ph] forall) } => |-))
+})

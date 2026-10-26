@@ -1,0 +1,14 @@
+# FALSE: repeat the capture attack through two independently DV-checked lemmas.
+# Replacing their bodies by declared types must preserve the original DV rule.
+(def proof wrapper (dv (del sel))
+  : ([x ph.ph] wff)
+  -> ([x ph.] { [.ph] ([.x ph] forall) } => |-)
+  = ax-5)
+(def proof wrapper-again (dv (del sel))
+  : ([x ph.ph] wff)
+  -> ([x ph.] { [.ph] ([.x ph] forall) } => |-)
+  = wrapper)
+(def proof bad (dv del)
+  : ([x] predicate wff)
+  -> {[x.] ([.x] predicate [ph.]) ({[.ph] ([.x ph] forall)} => |-)}
+  = wrapper-again)

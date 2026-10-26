@@ -1,0 +1,3 @@
+# FALSE: ph |- ps for unrelated ph, ps (take ph=true, ps=false).
+# Discard the actual hypothesis and manufacture an unproduced conclusion wire.
+(def proof bad : ([ph ps.ph] |-) -> ([ph ps.ps] |-) = {[h.] [.p]})

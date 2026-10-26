@@ -1,0 +1,5 @@
+# INVALID: merge unrelated hypotheses into a proof of ph.
+# This graph claims to identify ph and ps, rather than discard ps.
+# It is an invalid derivation even though projection from two hypotheses is valid.
+(def proof bad
+  : ([ph ps] {|- |-}) -> ([ph ps.ph] |-) = [a a.a])

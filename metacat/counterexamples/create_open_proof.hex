@@ -1,0 +1,3 @@
+# FALSE: proves every formula ph from no hypotheses. Keeping a nonempty
+# metavariable boundary rules out an explanation specific to the empty boundary.
+(def proof bad : [ph.] -> ([ph] |-) = [.p])

@@ -1,0 +1,10 @@
+# Standalone minimized counterexample: run `cargo run -- check <this file>`.
+# No proof axioms, hypotheses, recursive definitions, or DV conditions are used.
+# The empty deductive theory has no proof of bottom; reject this unproduced proof wire.
+(theory syntax nat {
+  (arr bottom : 0 -> 1)
+  (arr |- : 1 -> 1)
+})
+(theory proof syntax {
+  (def bad : {} -> (bottom |-) = [.p])
+})

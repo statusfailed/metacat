@@ -1,0 +1,6 @@
+# Load with examples/mini-set.hex, NOT counterexamples/base.hex.
+# FALSE: from well-formed ph, prove ph /\ -. ph with an unproduced proof wire.
+# No axiom or existing theorem is used, and no recursive definition is involved.
+(def set.proof bad
+  : wff -> ([ph.ph ph] {_ -.} and |-)
+  = {[h.] [.p]})

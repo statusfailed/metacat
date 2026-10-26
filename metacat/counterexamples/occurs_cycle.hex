@@ -1,0 +1,2 @@
+# INVALID: attempt to solve ph=box(ph), using an infinite syntax tree as a type.
+(def proof bad : wff -> (box wff) = _)

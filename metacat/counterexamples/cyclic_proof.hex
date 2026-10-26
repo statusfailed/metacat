@@ -1,0 +1,4 @@
+# FALSE: feed an identity rule its own output to prove bottom without a premise.
+# Definition dependencies are acyclic; the cycle is in the proof graph itself,
+# not in the constructor-dependency graph tested by the syntax occurs check.
+(def proof bad : {} -> (false |-) = {([.p] id [p.]) [.p]})

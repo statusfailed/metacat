@@ -1,0 +1,6 @@
+# FALSE for e.g. box interpreted as identity: conceal the forbidden dependency
+# behind two constructor edges, so checking must use transitive reachability.
+(def proof bad (dv del)
+  : ([x] predicate box wff)
+  -> {[x.] ([.x] predicate box [ph.]) ({[.ph] ([.x ph] forall)} => |-)}
+  = ax-5)

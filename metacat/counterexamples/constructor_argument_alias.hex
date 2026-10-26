@@ -1,0 +1,3 @@
+# INVALID: silently identify the second argument ps with ph under pair.
+(def proof bad
+  : ([ph ps] pair wff) -> ([ph ps.ph ph] pair wff) = _)

@@ -1,0 +1,2 @@
+# INVALID: the same infinite-tree attack with a two-constructor dependency path.
+(def proof bad : wff -> (box box wff) = _)

@@ -1,0 +1,5 @@
+# INVALID: substitute a constructor expression for ax-5's bare bound variable.
+(def proof bad
+  : ([ph] wff)
+  -> ([ph.] { [.ph] ({true [.ph]} forall) } => |-)
+  = ax-5)

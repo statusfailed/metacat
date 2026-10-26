@@ -1,0 +1,3 @@
+# INVALID: swap the distinct output projections of the same syntax constructor.
+# A head's output port, not just its operation label/arguments, identifies it.
+(def proof bad : (split {wff wff}) -> (split {wff wff}) = [a b.b a])

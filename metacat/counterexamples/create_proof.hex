@@ -1,0 +1,4 @@
+# FALSE: proves bottom from no hypotheses, using no axioms at all.
+# The output proof wire has no producer. This is not a morphism of the paper's
+# free proof PROP, although the general hypergraph representation permits it.
+(def proof bad : {} -> (false |-) = [.p])

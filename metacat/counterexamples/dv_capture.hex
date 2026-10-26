@@ -1,0 +1,6 @@
+# FALSE: predicate(x) => forall x predicate(x), treating x as fresh for itself.
+# A two-element model with predicate true only at the current x refutes this.
+(def proof bad (dv del)
+  : ([x] predicate wff)
+  -> {[x.] ([.x] predicate [ph.]) ({[.ph] ([.x ph] forall)} => |-)}
+  = ax-5)

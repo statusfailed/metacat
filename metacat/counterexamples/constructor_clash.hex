@@ -1,0 +1,3 @@
+# FALSE: reinterpret the genuine proof of true as a proof of false.
+# Nullary constructor outputs must not become equal just because both are proven.
+(def proof bad : {} -> (false |-) = true-intro)

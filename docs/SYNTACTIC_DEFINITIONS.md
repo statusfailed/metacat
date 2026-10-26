@@ -112,6 +112,11 @@ where we require `x # y`:
 
 TODO
 
+# Recursive Definitions
+
+For reasons of well-foundedness, we must prevent recursive definitions.
+This amounts to ... (TODO)
+
 # Implementation Details
 
 The implementation of syntactic definitions is somewhat tied to the logic being checked.

@@ -1,0 +1,3 @@
+# FALSE: use the same proof wire for unrelated formulae (ph=true, ps=false).
+# Saturation must not specialize away the distinction between boundary variables.
+(def proof bad : ([ph ps.ph] |-) -> ([ph ps.ps] |-) = _)

@@ -107,7 +107,10 @@ pub fn dv_check(
     for (index, &class) in boundary.iter().enumerate() {
         boundary_index[class] = Some(index);
     }
-    let (reach, headed) = boundary_extended_reachability(&result, &boundary, &boundary_ar);
+    // With no bare metavariables, the expanded permission matrix is all ones
+    // and there are no bareness obligations. Build the expensive closure only
+    // if some occurrence actually needs it. Annotation validation still runs.
+    let mut reachability = None;
 
     // Each declaration's FinRel term needs interpreting only once, even when
     // the proof contains several occurrences with different metavariable maps.
@@ -131,6 +134,12 @@ pub fn dv_check(
                 )?)
             }
         };
+        if ar.source() == 0 {
+            continue;
+        }
+        let (reach, headed) = reachability.get_or_insert_with(|| {
+            boundary_extended_reachability(&result, &boundary, &boundary_ar)
+        });
         let classes = generator
             .mapping
             .compose(&result.saturation)
